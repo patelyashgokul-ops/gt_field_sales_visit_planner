@@ -135,3 +135,16 @@ class TestSalesReporting(FieldSalesCase):
         for value in ('=1+1', '+cmd', '-1+1', '@SUM(A1:A2)', '\t=HYPERLINK("https://bad")'):
             self.assertTrue(service.spreadsheet_safe_text(value).startswith("'"))
         self.assertEqual(service.spreadsheet_safe_text('Normal, "quoted"\ntext'), 'Normal, "quoted"\ntext')
+
+    def test_dashboard_query_count_is_bounded(self):
+        filters = {
+            'company_id': self.company_a.id,
+            'date_from': fields.Date.today(),
+            'date_to': fields.Date.today(),
+        }
+        service = self.env['gt.sales.reporting'].with_user(self.manager)
+        self.env.flush_all()
+        queries_before = self.cr.sql_log_count
+        service.get_dashboard_data(filters)
+        query_count = self.cr.sql_log_count - queries_before
+        self.assertLessEqual(query_count, 70, 'Dashboard SQL query count should stay bounded as records grow.')
