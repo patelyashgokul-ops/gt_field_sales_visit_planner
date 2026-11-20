@@ -448,7 +448,7 @@ class SalesVisit(models.Model):
             raise UserError('Only draft or planned visits can be rescheduled.')
         if not reason or not reason.strip():
             raise ValidationError('A reschedule reason is required.')
-        if target_plan and not isinstance(target_plan, models.BaseModel):
+        if target_plan and isinstance(target_plan, (int, str)):
             try:
                 target_plan = self.env['gt.sales.visit.plan'].browse(int(target_plan))
             except (TypeError, ValueError) as error:
