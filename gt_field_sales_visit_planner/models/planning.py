@@ -448,12 +448,19 @@ class SalesVisit(models.Model):
             raise UserError('Only draft or planned visits can be rescheduled.')
         if not reason or not reason.strip():
             raise ValidationError('A reschedule reason is required.')
+        if target_plan and not isinstance(target_plan, models.BaseModel):
+            try:
+                target_plan = self.env['gt.sales.visit.plan'].browse(int(target_plan))
+            except (TypeError, ValueError) as error:
+                raise ValidationError('Choose a valid target plan.') from error
         if not target_plan:
             target_plan = self.env['gt.sales.visit.plan'].create({
                 'company_id': self.company_id.id, 'user_id': self.user_id.id,
                 'visit_date': target_date, 'timezone': self.plan_id.timezone,
                 'territory_id': self.territory_id.id,
             })
+        if len(target_plan) != 1 or not target_plan.exists():
+            raise ValidationError('Choose an existing target plan.')
         if (target_plan.company_id != self.company_id or target_plan.user_id != self.user_id
                 or target_plan.visit_date != fields.Date.to_date(target_date)
                 or target_plan.territory_id != self.territory_id):

@@ -69,7 +69,9 @@ class TestVisitPlanning(FieldSalesCase):
         })
         with self.assertRaises(ValidationError):
             visit.with_user(self.manager).action_reschedule('2026-05-19', '')
-        replacement = visit.with_user(self.manager).action_reschedule('2026-05-19', 'Customer requested new date')
+        target = self.plan(visit_date='2026-05-19')
+        replacement = visit.with_user(self.manager).action_reschedule(
+            '2026-05-19', 'Customer requested new date', target.id)
         self.assertEqual(visit.state, 'rescheduled')
         self.assertEqual(replacement.reschedule_origin_id, visit)
         self.assertEqual(replacement.plan_id.visit_date, visit.plan_id.visit_date.replace(day=19))
