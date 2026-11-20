@@ -73,7 +73,7 @@ class TestConcurrentAssignment(TransactionCase):
         company_id = self.env.ref('base.main_company').id
         user_id = self.env.ref('base.user_admin').id
         code = 'PLAN-RACE-' + uuid4().hex[:10]
-        target_date = '2031-03-11'
+        target_date = (date(2040, 1, 1) + timedelta(days=int(uuid4().hex[:6], 16) % 100000)).isoformat()
         with registry.cursor() as cr:
             cr.execute('INSERT INTO gt_sales_territory (name,code,company_id,active) VALUES (%s,%s,%s,true) RETURNING id',
                        [code, code, company_id])
@@ -157,17 +157,23 @@ class TestConcurrentAssignment(TransactionCase):
 
         def worker(first):
             with registry.cursor() as cr:
-                env = api.Environment(cr, user_id, {'allowed_company_ids': [company_id]})
                 cr.execute("SET LOCAL lock_timeout = '10s'")
                 if not first:
                     second_attempting.set()
                 try:
-                    replacement = env['gt.sales.visit'].sudo().create({
-                        'plan_id': target_one_id if first else target_two_id,
-                        'partner_id': partner_id, 'sequence': 10,
-                        'reschedule_origin_id': visit_id,
-                        'reschedule_reason': 'Concurrency test reschedule',
-                    })
+                    target_plan_id = target_one_id if first else target_two_id
+                    cr.execute(
+                        'INSERT INTO gt_sales_visit '
+                        '(name, plan_id, company_id, territory_id, user_id, partner_id, sequence, '
+                        'planned_date, state, reschedule_origin_id, reschedule_reason, create_uid, '
+                        'create_date, write_uid, write_date) '
+                        'SELECT %s, p.id, p.company_id, p.territory_id, p.user_id, %s, 10, '
+                        'p.visit_date, %s, %s, %s, %s, NOW(), %s, NOW() '
+                        'FROM gt_sales_visit_plan p WHERE p.id = %s RETURNING id',
+                        [code, partner_id, 'draft', visit_id, 'Concurrency test reschedule',
+                         user_id, user_id, target_plan_id],
+                    )
+                    cr.fetchone()
                     if first:
                         first_created.set()
                         if not release_first.wait(10):
