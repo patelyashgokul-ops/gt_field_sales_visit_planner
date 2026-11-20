@@ -77,8 +77,7 @@ class TestExecutionConcurrency(TransactionCase):
         with self.registry.cursor() as cr:
             cr.execute('UPDATE gt_sales_visit SET checkin_event_id=NULL, checkout_event_id=NULL, '
                        'checkin_exception_id=NULL, checkout_exception_id=NULL, checkin_at=NULL, checkout_at=NULL, '
-                       'actual_duration_minutes=NULL, state=CASE WHEN state IN (\'checked_in\', '
-                       '\'checked_out_pending_outcome\') THEN \'planned\' ELSE state END WHERE id = ANY(%s)',
+                       'actual_duration_minutes=NULL, state=\'planned\' WHERE id = ANY(%s)',
                        [self.visit_ids])
             cr.execute('DELETE FROM gt_sales_visit_execution_request WHERE visit_id = ANY(%s)', [self.visit_ids])
             cr.execute('DELETE FROM gt_sales_visit_location_exception WHERE visit_id = ANY(%s)', [self.visit_ids])
@@ -101,10 +100,11 @@ class TestExecutionConcurrency(TransactionCase):
             cr.execute('DELETE FROM gt_sales_territory_assignment WHERE territory_id = %s', [cls.territory_id])
             cr.execute('DELETE FROM gt_sales_territory WHERE id = %s', [cls.territory_id])
             cr.execute('DELETE FROM res_partner WHERE id = ANY(%s)', [cls.partner_ids])
-            cr.execute('DELETE FROM res_users WHERE id = ANY(%s)', [[cls.sales_id, cls.manager_id]])
             cr.commit()
         with cls.registry.cursor() as cr:
-            api.Environment(cr, cls.env.ref('base.user_admin').id, {})['res.company'].browse(cls.company_id).unlink()
+            env = api.Environment(cr, cls.env.ref('base.user_admin').id, {})
+            env['res.users'].sudo().browse([cls.sales_id, cls.manager_id]).unlink()
+            env['res.company'].sudo().browse(cls.company_id).unlink()
             cr.commit()
         super().tearDownClass()
 
