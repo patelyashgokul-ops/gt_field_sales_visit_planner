@@ -1,5 +1,6 @@
 from odoo import api, fields, models
 from odoo.exceptions import AccessError, ValidationError
+from psycopg2.errors import UniqueViolation
 
 from .common import check_allowed_company
 
@@ -35,7 +36,13 @@ class SalesTerritory(models.Model):
                 if not (vals.get(key) or '').strip():
                     raise ValidationError('%s cannot be blank.' % key.capitalize())
                 vals[key] = vals[key].strip()
-        return super().create(vals_list)
+        try:
+            with self.env.cr.savepoint():
+                return super().create(vals_list)
+        except UniqueViolation as error:
+            if error.diag.constraint_name != 'gt_sales_territory_company_code_unique':
+                raise
+            raise ValidationError('Territory code must be unique within the company.') from error
 
     def write(self, vals):
         for record in self:
@@ -54,7 +61,13 @@ class SalesTerritory(models.Model):
                 if not (vals[key] or '').strip():
                     raise ValidationError('%s cannot be blank.' % key.capitalize())
                 vals[key] = vals[key].strip()
-        return super().write(vals)
+        try:
+            with self.env.cr.savepoint():
+                return super().write(vals)
+        except UniqueViolation as error:
+            if error.diag.constraint_name != 'gt_sales_territory_company_code_unique':
+                raise
+            raise ValidationError('Territory code must be unique within the company.') from error
 
     def unlink(self):
         for record in self:

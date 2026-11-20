@@ -15,7 +15,7 @@ class TestFoundation(FieldSalesCase):
             Territory.with_user(self.unauthorized).create({'name': 'No', 'code': 'N', 'company_id': self.company_a.id})
         with self.assertRaises((AccessError, ValidationError)):
             self.territory_a.with_user(self.salesperson_a).write({'name': 'Changed'})
-        with self.assertRaises(Exception), self.cr.savepoint():
+        with self.assertRaises(ValidationError), self.cr.savepoint():
             self._territory('A', self.company_a)
         self.assertTrue(self.territory_a.with_user(self.manager).exists())
 
@@ -24,7 +24,7 @@ class TestFoundation(FieldSalesCase):
         first = Assignment.create(self.assignment_vals(date_to='2026-01-31'))
         with self.assertRaises(ValidationError), self.cr.savepoint():
             Assignment.create(self.assignment_vals(date_from='2026-01-15'))
-        with self.assertRaises((ValidationError, Exception)), self.cr.savepoint():
+        with self.assertRaises(ValidationError), self.cr.savepoint():
             Assignment.create(self.assignment_vals(date_from='2026-03-01', date_to='2026-02-01'))
         Assignment.create(self.assignment_vals(date_from='2026-02-01'))
         with self.assertRaises((ValidationError, AccessError)):
@@ -36,7 +36,7 @@ class TestFoundation(FieldSalesCase):
     def test_allocation_uniqueness_reassignment_shared_partner(self):
         Allocation = self.env['gt.sales.territory.customer']
         original = Allocation.create(self.allocation_vals())
-        with self.assertRaises(Exception), self.cr.savepoint():
+        with self.assertRaises(ValidationError), self.cr.savepoint():
             Allocation.create(self.allocation_vals())
         Allocation.with_company(self.company_b).create(self.allocation_vals(territory=self.territory_b))
         original.write({'active': False})
@@ -84,6 +84,10 @@ class TestFoundation(FieldSalesCase):
     def test_views_registered(self):
         for name in ('view_territory_form', 'view_territory_list', 'view_assignment_form', 'view_customer_form'):
             self.assertTrue(self.env.ref('gt_field_sales_visit_planner.' + name).arch_db)
+        for name in ('action_territory', 'action_assignment', 'action_customer',
+                     'menu_field_sales', 'menu_my_territories', 'menu_field_sales_config',
+                     'menu_territory', 'menu_assignment', 'menu_customer'):
+            self.assertTrue(self.env.ref('gt_field_sales_visit_planner.' + name).exists())
 
     def test_portal_user_and_forged_relations(self):
         portal = self.env['res.users'].with_context(no_reset_password=True).create({

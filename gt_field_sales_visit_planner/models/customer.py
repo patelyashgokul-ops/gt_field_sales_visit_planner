@@ -1,5 +1,6 @@
 from odoo import api, fields, models
 from odoo.exceptions import AccessError, ValidationError
+from psycopg2.errors import UniqueViolation
 
 from .common import check_allowed_company, check_territory_company
 
@@ -45,20 +46,31 @@ class SalesTerritoryCustomer(models.Model):
                 raise ValidationError('An archived territory cannot receive new allocations.')
             if vals.get('company_id') != territory.company_id.id:
                 raise ValidationError('The company must match the territory company.')
-        records = super().create(vals_list)
-        records._validate_business()
-        return records
+        try:
+            with self.env.cr.savepoint():
+                records = super().create(vals_list)
+                records._validate_business()
+                return records
+        except UniqueViolation as error:
+            if error.diag.constraint_name != 'gt_sales_territory_customer_one_active_customer':
+                raise
+            raise ValidationError('A customer can have only one active territory allocation per company.') from error
 
     def write(self, vals):
         for record in self:
             check_allowed_company(record)
-        result = super().write(vals)
-        self._validate_business()
-        if vals.get('active') is False:
-            # Make the release visible to the partial unique index before a
-            # replacement allocation is created in the same transaction.
-            self.flush_recordset(['active'])
-        return result
+        try:
+            with self.env.cr.savepoint():
+                result = super().write(vals)
+                self._validate_business()
+                if vals.get('active') is False:
+                    # Release the unique key before replacement in this transaction.
+                    self.flush_recordset(['active'])
+                return result
+        except UniqueViolation as error:
+            if error.diag.constraint_name != 'gt_sales_territory_customer_one_active_customer':
+                raise
+            raise ValidationError('A customer can have only one active territory allocation per company.') from error
 
     def unlink(self):
         raise AccessError('Allocations are historical records. Archive and create a new allocation instead.')
