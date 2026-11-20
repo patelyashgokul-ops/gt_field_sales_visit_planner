@@ -15,6 +15,7 @@
         'views/execution_views.xml',
         'data/visit_outcomes.xml',
         'views/business_views.xml',
+        'views/customer_history_views.xml',
         'wizard/reschedule_visit_views.xml',
     ],
     'assets': {

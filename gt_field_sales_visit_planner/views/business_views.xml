@@ -18,7 +18,7 @@
           <field name="product_interest_ids" readonly="state == 'completed'"><list editable="bottom"><field name="product_name"/><field name="interest_level"/><field name="notes"/></list></field>
           <group string="Completion"><field name="completed_at"/><field name="completed_by"/><field name="outcome_snapshot"/></group>
         </page>
-        <page string="Follow-up" invisible="not followup_required"><field name="activity_ids" /></page>
+        <page string="Follow-up" invisible="not followup_required"><field name="followup_activity_id" readonly="1"/><field name="followup_status"/><field name="followup_completed_at"/></page>
         <page string="Missed Visit" invisible="state != 'missed'"><field name="missed_reason"/><field name="missed_at"/><field name="missed_by"/></page>
       </xpath>
       <xpath expr="//sheet" position="inside"><chatter/></xpath>

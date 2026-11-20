@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="view_partner_field_visit_history" model="ir.ui.view">
+    <field name="name">res.partner.field.visit.history</field><field name="model">res.partner</field>
+    <field name="inherit_id" ref="base.view_partner_form"/>
+    <field name="arch" type="xml"><xpath expr="//notebook" position="inside"><page string="Field Visits"><field name="gt_field_visit_ids" readonly="1"><list default_order="planned_date desc,id desc"><field name="planned_date"/><field name="user_id"/><field name="territory_id"/><field name="state"/><field name="outcome_id"/><field name="followup_status"/></list></field></page></xpath></field>
+  </record>
+  <record id="view_crm_lead_field_visit_history" model="ir.ui.view">
+    <field name="name">crm.lead.field.visit.history</field><field name="model">crm.lead</field>
+    <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+    <field name="arch" type="xml"><xpath expr="//notebook" position="inside"><page string="Field Visits"><field name="gt_field_visit_ids" readonly="1"><list default_order="planned_date desc,id desc"><field name="planned_date"/><field name="partner_id"/><field name="user_id"/><field name="territory_id"/><field name="state"/><field name="outcome_id"/><field name="followup_status"/></list></field></page></xpath></field>
+  </record>
+</odoo>
