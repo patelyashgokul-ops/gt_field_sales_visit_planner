@@ -1,6 +1,7 @@
 """Execution race tests using independent committed PostgreSQL transactions."""
 
 import threading
+import faulthandler
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
@@ -15,11 +16,10 @@ class TestExecutionConcurrency(TransactionCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.registry = cls.env.registry
-        cls.company_id = cls.env.ref('base.main_company').id
         cls.prefix = 'P03-RACE-' + uuid4().hex[:10]
         with cls.registry.cursor() as cr:
-            bootstrap = api.Environment(cr, cls.env.ref('base.user_admin').id,
-                                        {'allowed_company_ids': [cls.company_id]})
+            bootstrap = api.Environment(cr, cls.env.ref('base.user_admin').id, {})
+            cls.company_id = bootstrap['res.company'].create({'name': cls.prefix}).id
             category_user = bootstrap.ref('base.group_user')
             salesperson_group = bootstrap.ref('gt_field_sales_visit_planner.group_field_salesperson')
             manager_group = bootstrap.ref('gt_field_sales_visit_planner.group_sales_manager')
@@ -100,10 +100,14 @@ class TestExecutionConcurrency(TransactionCase):
             cr.execute('DELETE FROM res_partner WHERE id = ANY(%s)', [cls.partner_ids])
             cr.execute('DELETE FROM res_users WHERE id = ANY(%s)', [[cls.sales_id, cls.manager_id]])
             cr.commit()
+        with cls.registry.cursor() as cr:
+            api.Environment(cr, cls.env.ref('base.user_admin').id, {})['res.company'].browse(cls.company_id).unlink()
+            cr.commit()
         super().tearDownClass()
 
     def _call(self, uid, visit_id, method, payload):
         with self.registry.cursor() as cr:
+            cr.execute("SET LOCAL statement_timeout = '15s'")
             env = api.Environment(cr, uid, {'allowed_company_ids': [self.company_id]})
             try:
                 result = getattr(env['gt.sales.visit'].browse(visit_id), method)(payload) if payload else getattr(
@@ -116,6 +120,7 @@ class TestExecutionConcurrency(TransactionCase):
 
     def _barrier_calls(self, calls):
         ready = threading.Barrier(len(calls))
+        faulthandler.dump_traceback_later(12, repeat=False)
 
         def invoke(call):
             ready.wait(timeout=10)
@@ -123,7 +128,10 @@ class TestExecutionConcurrency(TransactionCase):
 
         with ThreadPoolExecutor(max_workers=len(calls)) as pool:
             futures = [pool.submit(invoke, call) for call in calls]
-            return [future.result(timeout=20) for future in futures]
+            try:
+                return [future.result(timeout=20) for future in futures]
+            finally:
+                faulthandler.cancel_dump_traceback_later()
 
     @staticmethod
     def _payload(token=None):

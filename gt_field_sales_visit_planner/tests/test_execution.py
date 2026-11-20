@@ -252,7 +252,8 @@ class TestVisitExecution(FieldSalesCase):
             'group_ids': [(6, 0, [self.env.ref('base.group_user').id,
                                   self.env.ref('gt_field_sales_visit_planner.group_field_salesperson').id])],
         })
-        self.assertEqual(visit.execution_event_ids.with_user(other).read(['latitude', 'longitude']), [])
+        with self.assertRaises(AccessError):
+            visit.execution_event_ids.with_user(other).read(['latitude', 'longitude'])
 
     def test_company_location_boundaries_and_policy_snapshot(self):
         visit = self.create_planned_visit()
