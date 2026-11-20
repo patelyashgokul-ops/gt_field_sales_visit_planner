@@ -8,7 +8,7 @@
     'depends': ['base', 'contacts', 'mail'],
     'data': [
         'security/security.xml',
-        'security/ir.model.access.csv',
+        'security/ir.access.csv',
         'views/territory_views.xml',
     ],
     'installable': True,
