@@ -5,7 +5,7 @@
     'summary': 'Plan and manage territory-based customer visits',
     'author': 'Golok Technology',
     'license': 'OPL-1',
-    'depends': ['base', 'contacts', 'mail'],
+    'depends': ['base', 'contacts', 'mail', 'crm'],
     'pre_init_hook': 'pre_init_hook',
     'data': [
         'security/security.xml',
