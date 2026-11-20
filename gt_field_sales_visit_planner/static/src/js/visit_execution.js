@@ -17,7 +17,7 @@ const STATUS_LABELS = {
 
 export class VisitExecutionWidget extends Component {
     static template = "gt_field_sales_visit_planner.VisitExecutionWidget";
-    static props = useProps(standardWidgetProps);
+    props = useProps(standardWidgetProps);
     pending = signal(false);
     error = signal("");
     captureError = signal("");
