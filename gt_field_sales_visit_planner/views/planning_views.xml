@@ -93,11 +93,10 @@
         <filter name="draft" string="Draft" domain="[('state','=','draft')]"/>
         <filter name="confirmed" string="Confirmed" domain="[('state','=','confirmed')]"/>
         <filter name="cancelled" string="Cancelled" domain="[('state','=','cancelled')]"/>
-        <group expand="0" string="Group By">
-          <filter name="group_day" string="Visit Date" context="{'group_by':'visit_date'}"/>
-          <filter name="group_user" string="Salesperson" context="{'group_by':'user_id'}"/>
-          <filter name="group_territory" string="Territory" context="{'group_by':'territory_id'}"/>
-        </group>
+        <separator string="Group By"/>
+        <filter name="group_day" string="Visit Date" context="{'group_by':'visit_date'}"/>
+        <filter name="group_user" string="Salesperson" context="{'group_by':'user_id'}"/>
+        <filter name="group_territory" string="Territory" context="{'group_by':'territory_id'}"/>
       </search>
     </field>
   </record>
@@ -183,12 +182,11 @@
         <filter name="missed" string="Missed" domain="[('state','=','missed')]"/>
         <filter name="cancelled" string="Cancelled" domain="[('state','=','cancelled')]"/>
         <filter name="rescheduled" string="Rescheduled" domain="[('state','=','rescheduled')]"/>
-        <group expand="0" string="Group By">
-          <filter name="group_day" string="Visit Date" context="{'group_by':'planned_date'}"/>
-          <filter name="group_user" string="Salesperson" context="{'group_by':'user_id'}"/>
-          <filter name="group_territory" string="Territory" context="{'group_by':'territory_id'}"/>
-          <filter name="group_state" string="Status" context="{'group_by':'state'}"/>
-        </group>
+        <separator string="Group By"/>
+        <filter name="group_day" string="Visit Date" context="{'group_by':'planned_date'}"/>
+        <filter name="group_user" string="Salesperson" context="{'group_by':'user_id'}"/>
+        <filter name="group_territory" string="Territory" context="{'group_by':'territory_id'}"/>
+        <filter name="group_state" string="Status" context="{'group_by':'state'}"/>
       </search>
     </field>
   </record>
