@@ -216,22 +216,26 @@ class TestExecutionConcurrency(TransactionCase):
         """The source-visit unique index prevents duplicate obligations under race."""
         registry = self.registry
         visit_id = self.visit_ids[0]
+        admin_id = self.env.ref('base.user_admin').id
+        model_id = self.env['ir.model']._get_id('gt.sales.visit')
+        todo_id = self.env.ref('mail.mail_activity_data_todo').id
+        deadline = fields.Date.today()
         ready = threading.Barrier(2)
 
         def create_obligation():
+            ready.wait(timeout=10)
             with registry.cursor() as cr:
-                env = api.Environment(cr, self.env.ref('base.user_admin').id,
+                env = api.Environment(cr, admin_id,
                                       {'allowed_company_ids': [self.company_id]})
                 values = {
-                    'res_model_id': env['ir.model']._get_id('gt.sales.visit'),
+                    'res_model_id': model_id,
                     'res_id': visit_id,
-                    'activity_type_id': env.ref('mail.mail_activity_data_todo').id,
+                    'activity_type_id': todo_id,
                     'summary': 'Concurrent follow-up uniqueness test',
-                    'date_deadline': fields.Date.today(),
+                    'date_deadline': deadline,
                     'user_id': self.sales_id,
                     'gt_source_visit_id': visit_id,
                 }
-                ready.wait(timeout=10)
                 try:
                     activity = env['mail.activity'].sudo().create(values)
                     cr.commit()
