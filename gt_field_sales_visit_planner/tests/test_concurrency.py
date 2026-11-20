@@ -5,8 +5,6 @@ from uuid import uuid4
 
 from psycopg2.errors import ExclusionViolation
 
-from odoo import api
-from odoo.exceptions import ValidationError
 from odoo.tests import TransactionCase, tagged
 
 
@@ -18,11 +16,12 @@ class TestConcurrentAssignment(TransactionCase):
         user_id = self.env.ref('base.user_admin').id
         code = 'RACE-' + uuid4().hex[:12]
         with registry.cursor() as cr:
-            env = api.Environment(cr, 1, {})
-            territory = env['gt.sales.territory'].create({
-                'name': code, 'code': code, 'company_id': company_id,
-            })
-            territory_id = territory.id
+            cr.execute(
+                'INSERT INTO gt_sales_territory (name, code, company_id, active) '
+                'VALUES (%s, %s, %s, true) RETURNING id',
+                [code, code, company_id],
+            )
+            territory_id = cr.fetchone()[0]
             cr.commit()
 
         created = threading.Event()
@@ -31,22 +30,23 @@ class TestConcurrentAssignment(TransactionCase):
 
         def worker(first):
             with registry.cursor() as cr:
-                env = api.Environment(cr, 1, {})
                 cr.execute("SET LOCAL lock_timeout = '10s'")
                 if not first:
                     attempting.set()
                 try:
-                    env['gt.sales.territory.assignment'].create({
-                        'territory_id': territory_id, 'company_id': company_id,
-                        'user_id': user_id, 'date_from': '2026-01-01',
-                    })
+                    cr.execute(
+                        'INSERT INTO gt_sales_territory_assignment '
+                        '(territory_id, company_id, user_id, date_from, active) '
+                        'VALUES (%s, %s, %s, %s, true)',
+                        [territory_id, company_id, user_id, '2026-01-01'],
+                    )
                     if first:
                         created.set()
                         if not release.wait(10):
                             raise TimeoutError('Concurrent test release timed out')
                     cr.commit()
                     return 'created'
-                except (ValidationError, ExclusionViolation):
+                except ExclusionViolation:
                     cr.rollback()
                     return 'rejected'
 
