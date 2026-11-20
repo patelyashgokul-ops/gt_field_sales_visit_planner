@@ -1,6 +1,7 @@
 import uuid
 from datetime import timedelta
 
+from psycopg2.errors import UniqueViolation
 from odoo import fields
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import tagged
@@ -116,6 +117,10 @@ class TestVisitBusiness(FieldSalesCase):
             visit.with_user(self.salesperson_a).write({'outcome_id': archived.id})
         with self.assertRaises(AccessError):
             self.outcome.with_user(self.salesperson_a).write({'name': 'Redefined'})
+        with self.assertRaises(UniqueViolation), self.cr.savepoint():
+            self.env['gt.sales.visit.outcome'].with_user(self.manager).create({
+                'name': 'Duplicate code', 'code': self.outcome.code, 'company_id': self.company_a.id,
+            })
 
     def test_missed_visit_reason_and_state_protection(self):
         planned = self.make_visit(second=True)
@@ -171,7 +176,12 @@ class TestVisitBusiness(FieldSalesCase):
         visit.with_user(self.manager).action_correct_business_result({'meeting_summary': 'Corrected notes'}, 'Typo correction')
         self.assertEqual(visit.meeting_summary, 'Corrected notes')
         activity = visit.followup_activity_id
-        activity.with_user(self.salesperson_a).action_feedback(feedback='Customer contacted')
+        activity.with_user(self.manager).write({'user_id': self.app_admin.id, 'date_deadline': fields.Date.today() + timedelta(days=3)})
+        self.assertEqual(visit.next_followup_user_id, self.app_admin)
+        self.assertEqual(visit.next_followup_date, fields.Date.today() + timedelta(days=3))
+        self.assertEqual(self.env['gt.sales.visit.event'].search_count([
+            ('visit_id', '=', visit.id), ('event_type', '=', 'followup_reassigned')]), 1)
+        activity.with_user(self.app_admin).action_feedback(feedback='Customer contacted')
         self.assertTrue(visit.followup_completed_at)
         self.assertEqual(visit.followup_status, 'completed')
         self.assertEqual(self.env['gt.sales.visit.event'].search_count([

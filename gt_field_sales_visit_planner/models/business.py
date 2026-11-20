@@ -137,8 +137,9 @@ class SalesVisitBusiness(models.Model):
             summary = values.get('next_followup_summary', self.next_followup_summary)
             if not due or not assignee or not assignee.exists() or not (summary or '').strip():
                 raise ValidationError('Follow-up date, responsible user, and summary are required.')
-            if assignee.share or not assignee.has_group('base.group_user') or self.company_id not in assignee.company_ids or not assignee.active:
-                raise ValidationError('The follow-up owner must be an active internal user in this company.')
+            if (assignee.share or not assignee.has_group('gt_field_sales_visit_planner.group_field_salesperson')
+                    or self.company_id not in assignee.company_ids or not assignee.active):
+                raise ValidationError('The follow-up owner must be an active Field Sales user in this company.')
             completion_time = self.completed_at or fields.Datetime.now()
             timezone = pytz.timezone(self.plan_id.timezone)
             local_completion_date = pytz.UTC.localize(completion_time).astimezone(timezone).date()
@@ -386,8 +387,9 @@ class MailActivityVisitFollowup(models.Model):
                 if not visit.exists() or vals.get('res_model_id') != self.env['ir.model']._get_id('gt.sales.visit') or vals.get('res_id') != visit.id:
                     raise ValidationError('The follow-up must target its source visit.')
                 assignee = self.env['res.users'].sudo().browse(vals.get('user_id'))
-                if visit.company_id not in assignee.company_ids or assignee.share or not assignee.active:
-                    raise ValidationError('Follow-up owner must be an active internal user in the visit company.')
+                if (visit.company_id not in assignee.company_ids or assignee.share or not assignee.active
+                        or not assignee.has_group('gt_field_sales_visit_planner.group_field_salesperson')):
+                    raise ValidationError('Follow-up owner must be an active Field Sales user in the visit company.')
         return super().create(vals_list)
 
     def write(self, vals):
@@ -406,8 +408,9 @@ class MailActivityVisitFollowup(models.Model):
                 check_allowed_company(activity.gt_source_visit_id.plan_id)
                 if vals.get('user_id'):
                     user = self.env['res.users'].browse(vals['user_id'])
-                    if user.share or not user.active or activity.gt_source_visit_id.company_id not in user.company_ids:
-                        raise ValidationError('Follow-up owner must be an active internal user in the visit company.')
+                    if (user.share or not user.active or activity.gt_source_visit_id.company_id not in user.company_ids
+                            or not user.has_group('gt_field_sales_visit_planner.group_field_salesperson')):
+                        raise ValidationError('Follow-up owner must be an active Field Sales user in the visit company.')
             if 'date_deadline' in vals:
                 for activity in sourced:
                     visit = activity.gt_source_visit_id
