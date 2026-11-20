@@ -341,13 +341,19 @@ class SalesVisitExecution(models.Model):
     checkin_latitude = fields.Float(readonly=True, copy=False, digits=(10, 7))
     checkin_longitude = fields.Float(readonly=True, copy=False, digits=(10, 7))
     checkin_accuracy_m = fields.Float(readonly=True, copy=False)
-    checkin_location_status = fields.Selection(related='checkin_event_id.location_status', store=True, index=True)
+    checkin_location_status = fields.Selection(
+        related='checkin_event_id.location_status', store=True, index=True,
+        string='Check-in Location Assessment',
+    )
     checkin_event_id = fields.Many2one('gt.sales.visit.event', readonly=True, copy=False, ondelete='restrict')
     checkout_at = fields.Datetime(readonly=True, copy=False, index=True)
     checkout_latitude = fields.Float(readonly=True, copy=False, digits=(10, 7))
     checkout_longitude = fields.Float(readonly=True, copy=False, digits=(10, 7))
     checkout_accuracy_m = fields.Float(readonly=True, copy=False)
-    checkout_location_status = fields.Selection(related='checkout_event_id.location_status', store=True, index=True)
+    checkout_location_status = fields.Selection(
+        related='checkout_event_id.location_status', store=True, index=True,
+        string='Check-out Location Assessment',
+    )
     checkout_event_id = fields.Many2one('gt.sales.visit.event', readonly=True, copy=False, ondelete='restrict')
     actual_duration_minutes = fields.Float(readonly=True, copy=False)
     checkin_exception_id = fields.Many2one('gt.sales.visit.location.exception', readonly=True, copy=False, ondelete='restrict')
