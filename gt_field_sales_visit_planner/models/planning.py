@@ -214,6 +214,11 @@ class SalesVisit(models.Model):
         '(reschedule_origin_id) WHERE reschedule_origin_id IS NOT NULL',
         'A visit can have only one rescheduled replacement.',
     )
+    _no_concurrent_time_overlap = models.Constraint(
+        "EXCLUDE USING gist (user_id WITH =, tsrange(planned_start_at, planned_end_at, '[)') WITH &&) "
+        "WHERE (state IN ('draft', 'planned') AND planned_start_at IS NOT NULL AND planned_end_at IS NOT NULL)",
+        'This time window overlaps another visit for the salesperson.',
+    )
 
     @api.depends('partner_id')
     def _compute_name(self):

@@ -83,3 +83,27 @@ class TestVisitPlanning(FieldSalesCase):
         self.assertEqual(plan.state, 'cancelled')
         with self.assertRaises(AccessError):
             plan.unlink()
+
+    def test_salesperson_cannot_forge_plan_owner_or_company(self):
+        vals = {'company_id': self.company_a.id, 'user_id': self.salesperson_b.id,
+                'visit_date': '2026-05-22', 'territory_id': self.territory_a.id}
+        with self.assertRaises((AccessError, ValidationError)):
+            self.env['gt.sales.visit.plan'].with_user(self.salesperson_a).with_context(
+                allowed_company_ids=[self.company_a.id]).create(vals)
+
+    def test_time_window_validation_and_conflict(self):
+        first_plan = self.plan(visit_date='2026-05-23')
+        second_customer = self.env['res.partner'].create({'name': 'Second field customer'})
+        self.env['gt.sales.territory.customer'].create({
+            'territory_id': self.territory_a.id, 'company_id': self.company_a.id,
+            'partner_id': second_customer.id,
+        })
+        visit_model = self.env['gt.sales.visit'].with_user(self.manager).with_context(
+            allowed_company_ids=[self.company_a.id])
+        visit_model.create({'plan_id': first_plan.id, 'partner_id': self.customer_a.id,
+                            'sequence': 10, 'planned_start_at': '2026-05-23 03:30:00',
+                            'planned_end_at': '2026-05-23 04:30:00'})
+        with self.assertRaises(ValidationError):
+            visit_model.create({'plan_id': first_plan.id, 'partner_id': second_customer.id,
+                                'sequence': 20, 'planned_start_at': '2026-05-23 04:00:00',
+                                'planned_end_at': '2026-05-23 05:00:00'})
