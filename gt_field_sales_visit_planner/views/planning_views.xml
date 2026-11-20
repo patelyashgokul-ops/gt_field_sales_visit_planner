@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="view_visit_plan_list" model="ir.ui.view">
+    <field name="name">gt.sales.visit.plan.list</field>
+    <field name="model">gt.sales.visit.plan</field>
+    <field name="arch" type="xml">
+      <list decoration-success="state == 'confirmed'" decoration-muted="state == 'cancelled'"
+            default_order="visit_date desc,user_id,id desc">
+        <field name="name"/>
+        <field name="visit_date"/>
+        <field name="user_id"/>
+        <field name="territory_id"/>
+        <field name="planned_visit_count" string="Unexecuted"/>
+        <field name="state" widget="badge"/>
+        <field name="company_id" groups="base.group_multi_company"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="view_visit_plan_form" model="ir.ui.view">
+    <field name="name">gt.sales.visit.plan.form</field>
+    <field name="model">gt.sales.visit.plan</field>
+    <field name="arch" type="xml">
+      <form>
+        <header>
+          <button name="action_confirm" type="object" string="Confirm Plan" class="oe_highlight"
+                  invisible="state != 'draft'"/>
+          <button name="action_open_cancel" type="object" string="Cancel Plan" invisible="state == 'cancelled'"/>
+          <button name="action_open_amend" type="object" string="Amend Plan"
+                  groups="gt_field_sales_visit_planner.group_sales_manager" invisible="state != 'confirmed'"/>
+          <field name="state" widget="statusbar" statusbar_visible="draft,confirmed,cancelled"/>
+        </header>
+        <sheet>
+          <div class="oe_title"><h1><field name="name"/></h1></div>
+          <group>
+            <group string="Plan Information">
+              <field name="company_id"/>
+              <field name="user_id" domain="[('company_ids', 'in', company_id)]"/>
+              <field name="territory_id" domain="[('company_id', '=', company_id), ('active', '=', True)]"/>
+            </group>
+            <group string="Schedule">
+              <field name="visit_date"/>
+              <field name="timezone"/>
+              <field name="planned_visit_count" string="Unexecuted Visits"/>
+              <field name="confirmed_by" invisible="not confirmed_by"/>
+              <field name="confirmed_at" invisible="not confirmed_at"/>
+            </group>
+          </group>
+          <notebook>
+            <page string="Customer Route">
+              <field name="visit_ids" context="{'default_plan_id': id}" readonly="state != 'draft'">
+                <list editable="bottom" default_order="sequence,id">
+                  <field name="sequence" widget="handle"/>
+                  <field name="partner_id" string="Customer"
+                         domain="['|', ('company_id', '=', False), ('company_id', '=', parent.company_id)]"/>
+                  <field name="crm_lead_id" string="Opportunity"
+                         domain="[('partner_id', '=', partner_id), ('company_id', '=', parent.company_id)]"/>
+                  <field name="planned_start_at" string="Start"/>
+                  <field name="planned_end_at" string="End"/>
+                  <field name="state" widget="badge"/>
+                  <field name="planning_notes" optional="hide"/>
+                </list>
+              </field>
+              <p class="text-muted">Drag the stop handle to change the route order while this plan is a draft.</p>
+            </page>
+            <page string="Planning Notes">
+              <field name="notes" placeholder="Instructions for the assigned salesperson..."/>
+              <field name="amendment_log" readonly="1" invisible="not amendment_log"/>
+              <field name="cancellation_reason" readonly="1" invisible="not cancellation_reason"/>
+              <field name="cancelled_by" readonly="1" invisible="not cancelled_by"/>
+              <field name="cancelled_at" readonly="1" invisible="not cancelled_at"/>
+            </page>
+          </notebook>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="view_visit_plan_search" model="ir.ui.view">
+    <field name="name">gt.sales.visit.plan.search</field>
+    <field name="model">gt.sales.visit.plan</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="name"/>
+        <field name="user_id"/>
+        <field name="territory_id"/>
+        <field name="visit_date"/>
+        <filter name="today" string="Today" domain="[('visit_date', '=', context_today())]"/>
+        <filter name="tomorrow" string="Tomorrow"
+                domain="[('visit_date', '=', (context_today() + relativedelta(days=1)).strftime('%Y-%m-%d'))]"/>
+        <filter name="this_week" string="This Week"
+                domain="[('visit_date', '&gt;=', (context_today() - relativedelta(days=context_today().weekday())).strftime('%Y-%m-%d')), ('visit_date', '&lt;=', (context_today() + relativedelta(days=6-context_today().weekday())).strftime('%Y-%m-%d'))]"/>
+        <filter name="draft" string="Draft" domain="[('state','=','draft')]"/>
+        <filter name="confirmed" string="Confirmed" domain="[('state','=','confirmed')]"/>
+        <filter name="cancelled" string="Cancelled" domain="[('state','=','cancelled')]"/>
+        <group expand="0" string="Group By">
+          <filter name="group_day" string="Visit Date" context="{'group_by':'visit_date'}"/>
+          <filter name="group_user" string="Salesperson" context="{'group_by':'user_id'}"/>
+          <filter name="group_territory" string="Territory" context="{'group_by':'territory_id'}"/>
+        </group>
+      </search>
+    </field>
+  </record>
+
+  <record id="view_visit_kanban" model="ir.ui.view">
+    <field name="name">gt.sales.visit.mobile.kanban</field>
+    <field name="model">gt.sales.visit</field>
+    <field name="arch" type="xml">
+      <kanban class="o_kanban_mobile" default_order="planned_date,sequence,id">
+        <field name="name"/>
+        <field name="partner_id"/>
+        <field name="planned_date"/>
+        <field name="planned_start_at"/>
+        <field name="planned_end_at"/>
+        <field name="sequence"/>
+        <field name="state"/>
+        <field name="territory_id"/>
+        <templates>
+          <t t-name="card">
+            <div class="d-flex flex-column gap-2">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <strong class="text-break"><field name="partner_id"/></strong>
+                <field name="state" widget="badge"/>
+              </div>
+              <div class="text-muted d-flex flex-wrap gap-2">
+                <span>Stop <field name="sequence"/></span>
+                <span><field name="planned_date"/></span>
+              </div>
+              <div t-if="record.planned_start_at.raw_value" class="text-muted">
+                <field name="planned_start_at"/> – <field name="planned_end_at"/>
+              </div>
+              <div class="text-muted"><field name="territory_id"/></div>
+            </div>
+          </t>
+        </templates>
+      </kanban>
+    </field>
+  </record>
+
+  <record id="view_visit_list" model="ir.ui.view">
+    <field name="name">gt.sales.visit.list</field>
+    <field name="model">gt.sales.visit</field>
+    <field name="arch" type="xml">
+      <list default_order="planned_date desc,sequence,id"
+            decoration-success="state == 'completed'" decoration-warning="state == 'checked_in'"
+            decoration-muted="state in ['cancelled','rescheduled']">
+        <field name="planned_date" string="Visit Date"/>
+        <field name="sequence" string="Stop"/>
+        <field name="partner_id" string="Customer"/>
+        <field name="planned_start_at" optional="hide"/>
+        <field name="user_id" optional="show"/>
+        <field name="territory_id" optional="show"/>
+        <field name="state" widget="badge"/>
+        <field name="plan_id" optional="hide"/>
+        <button name="action_open_reschedule" type="object" string="Reschedule"
+                invisible="state not in ['draft','planned']"/>
+        <button name="action_open_cancel" type="object" string="Cancel Visit"
+                invisible="state not in ['draft','planned']"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="view_visit_search" model="ir.ui.view">
+    <field name="name">gt.sales.visit.search</field>
+    <field name="model">gt.sales.visit</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="partner_id" string="Customer"/>
+        <field name="plan_id"/>
+        <field name="user_id"/>
+        <field name="territory_id"/>
+        <field name="planned_date"/>
+        <filter name="today" string="Today" domain="[('planned_date', '=', context_today())]"/>
+        <filter name="tomorrow" string="Tomorrow"
+                domain="[('planned_date', '=', (context_today() + relativedelta(days=1)).strftime('%Y-%m-%d'))]"/>
+        <filter name="this_week" string="This Week"
+                domain="[('planned_date', '&gt;=', (context_today() - relativedelta(days=context_today().weekday())).strftime('%Y-%m-%d')), ('planned_date', '&lt;=', (context_today() + relativedelta(days=6-context_today().weekday())).strftime('%Y-%m-%d'))]"/>
+        <filter name="planned" string="Planned" domain="[('state','=','planned')]"/>
+        <filter name="checked_in" string="Checked In" domain="[('state','=','checked_in')]"/>
+        <filter name="pending_outcome" string="Checked Out — Outcome Pending"
+                domain="[('state','=','checked_out_pending_outcome')]"/>
+        <filter name="completed" string="Completed" domain="[('state','=','completed')]"/>
+        <filter name="missed" string="Missed" domain="[('state','=','missed')]"/>
+        <filter name="cancelled" string="Cancelled" domain="[('state','=','cancelled')]"/>
+        <filter name="rescheduled" string="Rescheduled" domain="[('state','=','rescheduled')]"/>
+        <group expand="0" string="Group By">
+          <filter name="group_day" string="Visit Date" context="{'group_by':'planned_date'}"/>
+          <filter name="group_user" string="Salesperson" context="{'group_by':'user_id'}"/>
+          <filter name="group_territory" string="Territory" context="{'group_by':'territory_id'}"/>
+          <filter name="group_state" string="Status" context="{'group_by':'state'}"/>
+        </group>
+      </search>
+    </field>
+  </record>
+
+  <record id="action_my_plans" model="ir.actions.act_window">
+    <field name="name">My Daily Plans</field><field name="res_model">gt.sales.visit.plan</field>
+    <field name="view_mode">list,form</field><field name="domain">[('user_id','=',uid)]</field>
+    <field name="context">{'default_user_id': uid}</field>
+    <field name="help" type="html"><p class="o_view_nocontent_smiling_face">Create a daily visit plan.</p></field>
+  </record>
+  <record id="action_today_visits" model="ir.actions.act_window">
+    <field name="name">Today's Visits</field><field name="res_model">gt.sales.visit</field>
+    <field name="view_mode">kanban,list,form</field><field name="domain">[('user_id','=',uid)]</field>
+    <field name="context">{'search_default_today': 1}</field>
+  </record>
+  <record id="action_team_plans" model="ir.actions.act_window">
+    <field name="name">Team Visit Plans</field><field name="res_model">gt.sales.visit.plan</field>
+    <field name="view_mode">list,form</field>
+  </record>
+  <record id="action_all_visits" model="ir.actions.act_window">
+    <field name="name">All Authorized Visits</field><field name="res_model">gt.sales.visit</field>
+    <field name="view_mode">kanban,list,form</field>
+  </record>
+  <record id="action_visit_execution" model="ir.actions.act_window">
+    <field name="name">Visit Execution</field><field name="res_model">gt.sales.visit</field>
+    <field name="view_mode">kanban,list,form</field>
+  </record>
+
+  <menuitem id="menu_my_work" name="My Work" parent="menu_field_sales" sequence="10"
+            groups="group_field_salesperson"/>
+  <menuitem id="menu_my_territories" name="My Territories" parent="menu_my_work"
+            action="action_territory" sequence="30" groups="group_field_salesperson"/>
+  <menuitem id="menu_today_visits" name="Today's Visits" parent="menu_my_work"
+            action="action_today_visits" sequence="5" groups="group_field_salesperson"/>
+  <menuitem id="menu_my_plans" name="My Daily Plans" parent="menu_my_work"
+            action="action_my_plans" sequence="10" groups="group_field_salesperson"/>
+  <menuitem id="menu_visit_execution" name="Visit Execution" parent="menu_my_work"
+            action="action_visit_execution" sequence="15" groups="group_field_salesperson"/>
+
+  <menuitem id="menu_team_management" name="Team Management" parent="menu_field_sales" sequence="20"
+            groups="group_sales_manager,group_field_sales_admin"/>
+  <menuitem id="menu_team_plans" name="Team Visit Plans" parent="menu_team_management"
+            action="action_team_plans" sequence="10" groups="group_sales_manager,group_field_sales_admin"/>
+  <menuitem id="menu_all_visits" name="All Authorized Visits" parent="menu_team_management"
+            action="action_all_visits" sequence="20" groups="group_sales_manager,group_field_sales_admin"/>
+</odoo>

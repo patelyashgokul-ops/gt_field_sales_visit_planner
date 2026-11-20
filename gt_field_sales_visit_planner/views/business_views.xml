@@ -34,7 +34,7 @@
   <record id="action_my_visit_followups" model="ir.actions.act_window"><field name="name">My Follow-ups</field><field name="res_model">mail.activity</field><field name="view_mode">list,form</field><field name="domain">[('gt_source_visit_id','!=',False),('user_id','=',uid)]</field></record>
   <record id="action_team_visit_followups" model="ir.actions.act_window"><field name="name">Team Follow-ups</field><field name="res_model">mail.activity</field><field name="view_mode">list,form</field><field name="domain">[('gt_source_visit_id','!=',False)]</field></record>
   <menuitem id="menu_visit_outcomes" name="Visit Outcomes" parent="gt_field_sales_visit_planner.menu_field_sales_config" action="action_visit_outcomes" sequence="60" groups="gt_field_sales_visit_planner.group_sales_manager,gt_field_sales_visit_planner.group_field_sales_admin"/>
-  <menuitem id="menu_my_visit_followups" name="My Follow-ups" parent="gt_field_sales_visit_planner.menu_field_sales" action="action_my_visit_followups" sequence="35" groups="gt_field_sales_visit_planner.group_field_salesperson"/>
-  <menuitem id="menu_team_visit_followups" name="Team Follow-ups" parent="gt_field_sales_visit_planner.menu_field_sales" action="action_team_visit_followups" sequence="36" groups="gt_field_sales_visit_planner.group_sales_manager,gt_field_sales_visit_planner.group_field_sales_admin"/>
+  <menuitem id="menu_my_visit_followups" name="My Follow-ups" parent="gt_field_sales_visit_planner.menu_my_work" action="action_my_visit_followups" sequence="20" groups="gt_field_sales_visit_planner.group_field_salesperson"/>
+  <menuitem id="menu_team_visit_followups" name="Team Follow-ups" parent="gt_field_sales_visit_planner.menu_team_management" action="action_team_visit_followups" sequence="40" groups="gt_field_sales_visit_planner.group_sales_manager,gt_field_sales_visit_planner.group_field_sales_admin"/>
 </odoo>
 

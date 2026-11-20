@@ -1,6 +1,7 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
+import { ConnectionLostError } from "@web/core/network/rpc";
 import { useService } from "@web/core/utils/hooks";
 import { Component, signal, useProps } from "@odoo/owl";
 import { standardWidgetProps } from "@web/views/widgets/standard_widget_props";
@@ -21,6 +22,7 @@ export class VisitExecutionWidget extends Component {
     pending = signal(false);
     error = signal("");
     captureError = signal("");
+    resultMessage = signal("");
     retryPayload = signal(null);
 
     setup() {
@@ -38,6 +40,7 @@ export class VisitExecutionWidget extends Component {
         }
         this.error.set("");
         this.captureError.set("");
+        this.resultMessage.set("");
         if (!window.isSecureContext) {
             this.captureError.set("Location capture requires a secure browser context (HTTPS or localhost).");
             return;
@@ -53,7 +56,7 @@ export class VisitExecutionWidget extends Component {
                 longitude: position.coords.longitude,
                 accuracy_m: position.coords.accuracy,
                 client_acquired_at: new Date(position.timestamp).toISOString(),
-                request_token: crypto.randomUUID(),
+                request_token: this._newRequestToken(),
             }),
             (error) => {
                 this.pending.set(false);
@@ -72,7 +75,7 @@ export class VisitExecutionWidget extends Component {
         if (!this.pending()) {
             this.pending.set(true);
             await this._submit(eventType, {
-                request_token: crypto.randomUUID(),
+                request_token: this._newRequestToken(),
                 explanation: this.captureError() || "The browser did not provide a location.",
             });
         }
@@ -85,6 +88,21 @@ export class VisitExecutionWidget extends Component {
         const { eventType, payload } = this.retryPayload();
         this.pending.set(true);
         await this._submit(eventType, payload, true);
+    }
+
+    _newRequestToken() {
+        if (globalThis.crypto?.randomUUID) {
+            return globalThis.crypto.randomUUID();
+        }
+        if (!globalThis.crypto?.getRandomValues) {
+            throw new Error("Secure request identifiers are unavailable in this browser.");
+        }
+        const bytes = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(bytes);
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
     }
 
     async _submit(eventType, payload, retry = false) {
@@ -100,11 +118,19 @@ export class VisitExecutionWidget extends Component {
             this.retryPayload.set(null);
             this.captureError.set("");
             const status = STATUS_LABELS[result.location_status] || "Recorded";
-            this.notification.add(`${eventType === "check_in" ? "Check-in" : "Check-out"} recorded. ${status}.`, {
-                type: "success",
+            const operation = eventType === "check_out"
+                ? "Checked out. Meeting outcome pending."
+                : "Check-in recorded.";
+            const resultMessage = `${operation} Location assessment: ${status}.`;
+            this.resultMessage.set(resultMessage);
+            this.notification.add(resultMessage, {
+                type: ["within_radius", "not_required"].includes(result.location_status) ? "success" : "warning",
             });
         } catch (error) {
             this.error.set(error?.data?.message || error.message || "The visit operation failed.");
+            if (!(error instanceof ConnectionLostError)) {
+                this.retryPayload.set(null);
+            }
             this.notification.add(this.error(), { type: "danger" });
         } finally {
             this.pending.set(false);
