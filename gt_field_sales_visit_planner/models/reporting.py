@@ -95,6 +95,11 @@ class SalesReporting(models.AbstractModel):
 
     @api.model
     def _coverage_rows(self, f, limit=20):
+        # Flush ORM writes in this transaction before the parameterized aggregate.
+        self.env['gt.sales.territory'].flush_model(['company_id', 'active', 'name'])
+        self.env['gt.sales.territory.customer'].flush_model(['territory_id', 'company_id', 'partner_id', 'active'])
+        self.env['gt.sales.visit'].flush_model(['company_id', 'territory_id', 'partner_id', 'user_id', 'planned_date',
+                                                'state', 'completed_at', 'checkin_event_id', 'checkout_event_id'])
         # SQL is used only for this distinct allocation/visit join. The company is
         # checked against env.companies above; salesperson access is independently
         # constrained to their own visits and active assigned territory dates.
@@ -146,6 +151,9 @@ class SalesReporting(models.AbstractModel):
 
     @api.model
     def _outcome_rows(self, f, limit=20):
+        self.env['gt.sales.visit'].flush_model(['company_id', 'planned_date', 'state', 'completed_at',
+                                                'checkin_event_id', 'checkout_event_id', 'outcome_snapshot',
+                                                'territory_id', 'user_id'])
         # Outcome name/code come from the immutable completion-time snapshot,
         # not mutable outcome master data.
         clauses = ["company_id=%s", "planned_date >= %s", "planned_date <= %s",

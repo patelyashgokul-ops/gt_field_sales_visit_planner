@@ -115,6 +115,12 @@ class TestSalesReporting(FieldSalesCase):
     def test_snapshot_outcome_and_report_drilldown_consistency(self):
         _plan, visits = self._new_plan(self.salesperson_a, [self.shared_customer])
         self._complete(visits[0], self.salesperson_a)
+        self.assertEqual(visits[0].state, 'completed')
+        self.assertTrue(visits[0].outcome_snapshot)
+        self.env['gt.sales.visit'].flush_model(['company_id', 'planned_date', 'state', 'outcome_snapshot'])
+        self.env.cr.execute('SELECT COUNT(*) FROM gt_sales_visit WHERE company_id=%s AND planned_date=%s AND state=%s AND outcome_snapshot IS NOT NULL',
+                            [self.company_a.id, fields.Date.today(), 'completed'])
+        self.assertGreaterEqual(self.env.cr.fetchone()[0], 1)
         self.outcome.with_user(self.manager).write({'name': 'Renamed outcome later'})
         service = self.env['gt.sales.reporting'].with_user(self.manager)
         filters = {'company_id': self.company_a.id, 'date_from': fields.Date.today(), 'date_to': fields.Date.today()}
