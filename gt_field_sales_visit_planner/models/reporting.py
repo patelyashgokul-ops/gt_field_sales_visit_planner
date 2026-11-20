@@ -355,13 +355,14 @@ class SalesReporting(models.AbstractModel):
     @api.model
     def _visit_rows(self, f, limit=100):
         visits = self.env['gt.sales.visit'].search(self._scope_domain(f), order='planned_date desc, user_id, sequence, id', limit=limit)
+        location_labels = dict(self.env['gt.sales.visit.event']._fields['location_status'].selection)
         return [{'visit_id': visit.id, 'customer': visit.partner_id.display_name,
                  'salesperson': visit.user_id.display_name, 'territory': visit.territory_id.display_name,
                  'planned_date': fields.Date.to_string(visit.planned_date),
                  'status': dict(visit._fields['state'].selection).get(visit.state, visit.state),
                  'outcome': (visit.outcome_snapshot or {}).get('name', ''),
                  'followup_status': visit.followup_status,
-                 'location_status': dict(visit._fields['checkin_location_status'].selection).get(visit.checkin_location_status, '')}
+                 'location_status': location_labels.get(visit.checkin_location_status, '')}
                 for visit in visits]
 
     @api.model
