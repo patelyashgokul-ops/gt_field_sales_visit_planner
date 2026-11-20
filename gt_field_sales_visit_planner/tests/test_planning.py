@@ -87,9 +87,12 @@ class TestVisitPlanning(FieldSalesCase):
     def test_salesperson_cannot_forge_plan_owner_or_company(self):
         vals = {'company_id': self.company_a.id, 'user_id': self.salesperson_b.id,
                 'visit_date': '2026-05-22', 'territory_id': self.territory_a.id}
+        plan = self.env['gt.sales.visit.plan'].with_user(self.salesperson_a).with_context(
+            allowed_company_ids=[self.company_a.id]).create(vals)
+        self.assertEqual(plan.user_id, self.salesperson_a)
         with self.assertRaises((AccessError, ValidationError)):
             self.env['gt.sales.visit.plan'].with_user(self.salesperson_a).with_context(
-                allowed_company_ids=[self.company_a.id]).create(vals)
+                allowed_company_ids=[self.company_a.id]).create({**vals, 'company_id': self.company_b.id})
 
     def test_time_window_validation_and_conflict(self):
         first_plan = self.plan(visit_date='2026-05-23')

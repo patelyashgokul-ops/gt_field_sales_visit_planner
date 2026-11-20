@@ -2,6 +2,7 @@ import pytz
 
 from odoo import api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
+from psycopg2.errors import ExclusionViolation
 
 from .common import check_allowed_company
 
@@ -234,10 +235,14 @@ class SalesVisit(models.Model):
                 raise ValidationError('Visits can only be added to a draft plan.')
             check_allowed_company(plan)
             self._check_plan_owner(plan)
-        records = super().create(vals_list)
-        records._validate_eligibility()
-        records._validate_time_windows()
-        return records
+        try:
+            with self.env.cr.savepoint():
+                records = super().create(vals_list)
+                records._validate_eligibility()
+                records._validate_time_windows()
+                return records
+        except ExclusionViolation as error:
+            raise ValidationError('This time window overlaps another visit for the salesperson.') from error
 
     def _check_plan_owner(self, plan):
         if plan.user_id != self.env.user and not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
@@ -300,10 +305,14 @@ class SalesVisit(models.Model):
                 raise AccessError('Use the plan action to change visit status.')
             if protected.intersection(vals) and visit.plan_id.state != 'draft':
                 raise UserError('Visits in confirmed plans are immutable.')
-        result = super().write(vals)
-        self._validate_eligibility()
-        self._validate_time_windows()
-        return result
+        try:
+            with self.env.cr.savepoint():
+                result = super().write(vals)
+                self._validate_eligibility()
+                self._validate_time_windows()
+                return result
+        except ExclusionViolation as error:
+            raise ValidationError('This time window overlaps another visit for the salesperson.') from error
 
     def action_cancel(self, reason):
         if not reason or not reason.strip():
