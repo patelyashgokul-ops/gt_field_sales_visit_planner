@@ -28,6 +28,7 @@ class SalesVisitPlan(models.Model):
     confirmed_at = fields.Datetime(readonly=True, copy=False)
     confirmed_by = fields.Many2one('res.users', readonly=True, copy=False)
     cancellation_reason = fields.Text(copy=False)
+    amendment_log = fields.Text(copy=False, readonly=True)
     cancelled_at = fields.Datetime(readonly=True, copy=False)
     cancelled_by = fields.Many2one('res.users', readonly=True, copy=False)
     notes = fields.Text()
@@ -165,6 +166,45 @@ class SalesVisitPlan(models.Model):
         if self.user_id != self.env.user and not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
             raise AccessError('You can only cancel your own plan.')
         return {'type': 'ir.actions.act_window', 'res_model': 'gt.sales.plan.cancel.wizard',
+                'view_mode': 'form', 'target': 'new', 'context': {'default_plan_id': self.id}}
+
+    def action_amend(self, reason, ordered_visit_ids=None, notes=None):
+        """Manager-only, auditable correction for a confirmed plan before execution."""
+        self.ensure_one()
+        self.check_access('write')
+        check_allowed_company(self)
+        if not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
+            raise AccessError('Only a Sales Manager can amend a confirmed plan.')
+        if self.state != 'confirmed':
+            raise UserError('Only confirmed plans can be amended.')
+        if not reason or not reason.strip():
+            raise ValidationError('An amendment reason is required.')
+        visits = self.visit_ids.filtered(lambda v: v.state == 'planned')
+        if len(visits) != len(self.visit_ids):
+            raise UserError('A plan can only be amended before visit execution.')
+        if ordered_visit_ids is not None:
+            if set(ordered_visit_ids) != set(visits.ids) or len(ordered_visit_ids) != len(visits):
+                raise ValidationError('The amendment order must include every planned visit exactly once.')
+            offset = max(visits.mapped('sequence') or [0]) + len(visits) + 100
+            for visit in visits:
+                super(SalesVisit, visit).write({'sequence': visit.sequence + offset})
+            for position, visit_id in enumerate(ordered_visit_ids, start=1):
+                super(SalesVisit, self.env['gt.sales.visit'].browse(visit_id)).write({'sequence': position * 10})
+        log = '%s — %s (%s)\n' % (fields.Datetime.to_string(fields.Datetime.now()), reason.strip(), self.env.user.display_name)
+        vals = {'amendment_log': (self.amendment_log or '') + log}
+        if notes is not None:
+            vals['notes'] = notes
+        super(SalesVisitPlan, self).write(vals)
+        return True
+
+    def action_open_amend(self):
+        self.ensure_one()
+        check_allowed_company(self)
+        if not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
+            raise AccessError('Only a Sales Manager can amend a confirmed plan.')
+        if self.state != 'confirmed':
+            raise UserError('Only confirmed plans can be amended.')
+        return {'type': 'ir.actions.act_window', 'res_model': 'gt.sales.plan.amend.wizard',
                 'view_mode': 'form', 'target': 'new', 'context': {'default_plan_id': self.id}}
 
     def unlink(self):

@@ -28,3 +28,23 @@ class PlanCancelWizard(models.TransientModel):
         self.ensure_one()
         self.plan_id.action_cancel(self.reason)
         return {'type': 'ir.actions.act_window_close'}
+
+
+class PlanAmendWizard(models.TransientModel):
+    _name = 'gt.sales.plan.amend.wizard'
+    _description = 'Amend Confirmed Visit Plan'
+    plan_id = fields.Many2one('gt.sales.visit.plan', required=True)
+    reason = fields.Text(required=True)
+    notes = fields.Text()
+    ordered_visit_ids = fields.Char(help='Optional comma-separated visit record IDs in the desired route order.')
+
+    def action_apply(self):
+        self.ensure_one()
+        ids = None
+        if self.ordered_visit_ids:
+            try:
+                ids = [int(value.strip()) for value in self.ordered_visit_ids.split(',') if value.strip()]
+            except ValueError as error:
+                raise ValidationError('Visit order must contain numeric visit IDs separated by commas.') from error
+        self.plan_id.action_amend(self.reason, ordered_visit_ids=ids, notes=self.notes)
+        return {'type': 'ir.actions.act_window_close'}

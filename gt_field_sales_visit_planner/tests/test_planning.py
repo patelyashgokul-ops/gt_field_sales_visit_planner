@@ -110,3 +110,22 @@ class TestVisitPlanning(FieldSalesCase):
             visit_model.create({'plan_id': first_plan.id, 'partner_id': second_customer.id,
                                 'sequence': 20, 'planned_start_at': '2026-05-23 04:00:00',
                                 'planned_end_at': '2026-05-23 05:00:00'})
+
+    def test_manager_amendment_requires_reason_and_reorders(self):
+        plan = self.plan(visit_date='2026-05-24')
+        second_customer = self.env['res.partner'].create({'name': 'Amendment customer'})
+        self.env['gt.sales.territory.customer'].create({
+            'territory_id': self.territory_a.id, 'company_id': self.company_a.id,
+            'partner_id': second_customer.id,
+        })
+        Visit = self.env['gt.sales.visit'].with_user(self.manager).with_context(
+            allowed_company_ids=[self.company_a.id])
+        first = Visit.create({'plan_id': plan.id, 'partner_id': self.customer_a.id, 'sequence': 10})
+        second = Visit.create({'plan_id': plan.id, 'partner_id': second_customer.id, 'sequence': 20})
+        plan.with_user(self.manager).action_confirm()
+        with self.assertRaises(ValidationError):
+            plan.with_user(self.manager).action_amend('', [second.id, first.id])
+        plan.with_user(self.manager).action_amend('Customer priority changed', [second.id, first.id], notes='Reordered')
+        self.assertLess(second.sequence, first.sequence)
+        self.assertIn('Customer priority changed', plan.amendment_log)
+        self.assertEqual(plan.notes, 'Reordered')

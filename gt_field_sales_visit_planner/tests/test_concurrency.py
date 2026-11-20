@@ -65,3 +65,42 @@ class TestConcurrentAssignment(TransactionCase):
                 cr.execute('DELETE FROM gt_sales_territory_assignment WHERE territory_id = %s', [territory_id])
                 cr.execute('DELETE FROM gt_sales_territory WHERE id = %s', [territory_id])
                 cr.commit()
+
+    def test_duplicate_daily_plan_race(self):
+        registry = self.env.registry
+        company_id = self.env.ref('base.main_company').id
+        user_id = self.env.ref('base.user_admin').id
+        code = 'PLAN-RACE-' + uuid4().hex[:10]
+        target_date = '2031-03-11'
+        with registry.cursor() as cr:
+            cr.execute('INSERT INTO gt_sales_territory (name,code,company_id,active) VALUES (%s,%s,%s,true) RETURNING id',
+                       [code, code, company_id])
+            territory_id = cr.fetchone()[0]
+            cr.commit()
+        go = threading.Event()
+
+        def worker():
+            with registry.cursor() as cr:
+                cr.execute("SET LOCAL lock_timeout = '10s'")
+                go.wait(10)
+                try:
+                    cr.execute("INSERT INTO gt_sales_visit_plan (name,company_id,user_id,visit_date,timezone,territory_id,state,active) VALUES (%s,%s,%s,%s,'UTC',%s,'draft',true)",
+                               [code, company_id, user_id, target_date, territory_id])
+                    cr.commit()
+                    return 'created'
+                except Exception as error:
+                    cr.rollback()
+                    if getattr(getattr(error, 'diag', None), 'constraint_name', '') == 'gt_sales_visit_plan_unique_live_day':
+                        return 'rejected'
+                    raise
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                one, two = pool.submit(worker), pool.submit(worker)
+                go.set()
+                self.assertEqual(sorted([one.result(15), two.result(15)]), ['created', 'rejected'])
+        finally:
+            with registry.cursor() as cr:
+                cr.execute('DELETE FROM gt_sales_visit_plan WHERE company_id=%s AND user_id=%s AND visit_date=%s',
+                           [company_id, user_id, target_date])
+                cr.execute('DELETE FROM gt_sales_territory WHERE id=%s', [territory_id])
+                cr.commit()
