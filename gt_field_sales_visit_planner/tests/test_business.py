@@ -1,4 +1,3 @@
-import base64
 import uuid
 from datetime import timedelta
 
@@ -233,6 +232,16 @@ class TestVisitBusiness(FieldSalesCase):
         self.assertEqual(visit.next_followup_date, fields.Date.today() + timedelta(days=3))
         self.assertEqual(self.env['gt.sales.visit.event'].search_count([
             ('visit_id', '=', visit.id), ('event_type', '=', 'followup_reassigned')]), 1)
+        ordinary_activity = self.env['mail.activity'].with_user(self.salesperson_a).create({
+            'res_model_id': self.env['ir.model']._get_id('res.partner'),
+            'res_id': self.customer_a.id,
+            'activity_type_id': self.env.ref('mail.mail_activity_data_todo').id,
+            'summary': 'Ordinary CRM follow-up', 'date_deadline': fields.Date.today() + timedelta(days=2),
+            'user_id': self.salesperson_a.id,
+        })
+        with self.assertRaises(AccessError):
+            ordinary_activity.with_user(self.salesperson_a).write({'gt_source_visit_id': visit.id})
+        self.assertFalse(ordinary_activity.gt_source_visit_id)
         # RPC callers control context values; they must not be able to forge the
         # internal signal formerly used to bypass source-activity retention.
         with self.assertRaises(AccessError):
@@ -248,10 +257,10 @@ class TestVisitBusiness(FieldSalesCase):
         visit = self.make_visit()
         attachment = self.env['ir.attachment'].with_user(self.salesperson_a).create({
             'name': 'private-visit-note.txt', 'type': 'binary',
-            'datas': base64.b64encode(b'confidential visit note').decode(),
+            'raw': b'confidential visit note',
             'res_model': 'gt.sales.visit', 'res_id': visit.id,
         })
         self.assertTrue(attachment.with_user(self.salesperson_a).read(['name']))
         with self.assertRaises(AccessError):
-            attachment.with_user(self.salesperson_b).read(['datas'])
+            attachment.with_user(self.salesperson_b).read(['raw'])
 

@@ -1,6 +1,6 @@
 ﻿/** @odoo-module **/
 
-import { Component, onWillStart, proxy } from "@odoo/owl";
+import { Component, onWillDestroy, onWillStart, proxy } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 
@@ -24,6 +24,14 @@ export class FieldSalesDashboard extends Component {
         this.notification = useService("notification");
         this.state = proxy({ loading: true, error: "", data: null, report: "overview", rows: [], reportLoading: false,
             filters: { company_id: "", date_from: "", date_to: "", territory_id: "", user_id: "" } });
+        this._dashboardRequest = 0;
+        this._reportRequest = 0;
+        this._destroyed = false;
+        onWillDestroy(() => {
+            this._destroyed = true;
+            this._dashboardRequest++;
+            this._reportRequest++;
+        });
         onWillStart(() => this.reload());
     }
 
@@ -32,10 +40,15 @@ export class FieldSalesDashboard extends Component {
     get maxTrend() { return Math.max(1, ...(this.state.data?.trends || []).map((x) => x.planned)); }
 
     async reload() {
+        const requestId = ++this._dashboardRequest;
+        // Invalidate a report loaded under the previous filter/company context.
+        this._reportRequest++;
         this.state.loading = true;
         this.state.error = "";
+        const filters = this.cleanFilters();
         try {
-            const data = await this.orm.call("gt.sales.reporting", "get_dashboard_data", [this.cleanFilters()]);
+            const data = await this.orm.call("gt.sales.reporting", "get_dashboard_data", [filters]);
+            if (this._destroyed || requestId !== this._dashboardRequest) return;
             this.state.data = data;
             this.state.filters.company_id = String(data.filters.company_id);
             this.state.filters.date_from = data.filters.date_from;
@@ -45,6 +58,7 @@ export class FieldSalesDashboard extends Component {
             this.state.loading = false;
             if (this.state.report !== "overview") await this.loadReport();
         } catch (error) {
+            if (this._destroyed || requestId !== this._dashboardRequest) return;
             this.state.loading = false;
             this.state.error = error.message || "Unable to load Field Sales analytics.";
         }
@@ -79,14 +93,20 @@ export class FieldSalesDashboard extends Component {
     }
 
     async loadReport() {
+        const requestId = ++this._reportRequest;
+        const report = this.state.report;
+        const filters = this.cleanFilters();
         this.state.reportLoading = true;
         try {
-            this.state.rows = await this.orm.call("gt.sales.reporting", "get_report_rows", [this.state.report, this.cleanFilters(), 100]);
+            const rows = await this.orm.call("gt.sales.reporting", "get_report_rows", [report, filters, 100]);
+            if (this._destroyed || requestId !== this._reportRequest) return;
+            this.state.rows = rows;
         } catch (error) {
+            if (this._destroyed || requestId !== this._reportRequest) return;
             this.state.rows = [];
             this.notification.add(error.message || "Unable to load report.", { type: "danger" });
         } finally {
-            this.state.reportLoading = false;
+            if (!this._destroyed && requestId === this._reportRequest) this.state.reportLoading = false;
         }
     }
 

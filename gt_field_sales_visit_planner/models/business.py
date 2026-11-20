@@ -397,6 +397,8 @@ class MailActivityVisitFollowup(models.Model):
         return super().create(vals_list)
 
     def write(self, vals):
+        if 'gt_source_visit_id' in vals:
+            raise AccessError('A Field Sales follow-up source can only be set by visit completion.')
         sourced = self.filtered('gt_source_visit_id')
         if sourced:
             if {'gt_source_visit_id', 'res_model_id', 'res_id'} & vals.keys():

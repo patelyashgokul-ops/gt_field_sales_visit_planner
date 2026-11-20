@@ -3,7 +3,7 @@
 import { registry } from "@web/core/registry";
 import { ConnectionLostError } from "@web/core/network/rpc";
 import { useService } from "@web/core/utils/hooks";
-import { Component, signal, useProps } from "@odoo/owl";
+import { Component, onWillDestroy, signal, useProps } from "@odoo/owl";
 import { standardWidgetProps } from "@web/views/widgets/standard_widget_props";
 
 const STATUS_LABELS = {
@@ -28,6 +28,8 @@ export class VisitExecutionWidget extends Component {
     setup() {
         this.orm = useService("orm");
         this.notification = useService("notification");
+        this.destroyed = false;
+        onWillDestroy(() => { this.destroyed = true; });
     }
 
     get visitState() {
@@ -51,14 +53,18 @@ export class VisitExecutionWidget extends Component {
         }
         this.pending.set(true);
         navigator.geolocation.getCurrentPosition(
-            (position) => this._submit(eventType, {
+            (position) => {
+                if (this.destroyed) return;
+                this._submit(eventType, {
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude,
                 accuracy_m: position.coords.accuracy,
                 client_acquired_at: new Date(position.timestamp).toISOString(),
                 request_token: this._newRequestToken(),
-            }),
+                });
+            },
             (error) => {
+                if (this.destroyed) return;
                 this.pending.set(false);
                 const messages = {
                     1: "Location permission was denied.",
@@ -114,6 +120,7 @@ export class VisitExecutionWidget extends Component {
         }
         try {
             const result = await this.orm.call("gt.sales.visit", method, [[visitId], requestPayload]);
+            if (this.destroyed) return;
             await this.props.record.load();
             this.retryPayload.set(null);
             this.captureError.set("");
@@ -127,13 +134,14 @@ export class VisitExecutionWidget extends Component {
                 type: ["within_radius", "not_required"].includes(result.location_status) ? "success" : "warning",
             });
         } catch (error) {
+            if (this.destroyed) return;
             this.error.set(error?.data?.message || error.message || "The visit operation failed.");
             if (!(error instanceof ConnectionLostError)) {
                 this.retryPayload.set(null);
             }
             this.notification.add(this.error(), { type: "danger" });
         } finally {
-            this.pending.set(false);
+            if (!this.destroyed) this.pending.set(false);
         }
     }
 }
