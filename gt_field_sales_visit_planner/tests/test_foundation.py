@@ -81,6 +81,19 @@ class TestFoundation(FieldSalesCase):
                 'name': 'Cross Company', 'code': 'CROSS', 'company_id': self.company_b.id,
             })
 
+    def test_import_cannot_forge_company(self):
+        Territory = self.env['gt.sales.territory'].with_user(self.manager)
+        with self.cr.savepoint():
+            try:
+                result = Territory.load(
+                    ['name', 'code', 'company_id/.id'],
+                    [['Imported Forgery', 'IMPORT-FORGED', str(self.company_b.id)]],
+                )
+                self.assertTrue(result['messages'])
+            except (AccessError, ValidationError):
+                pass
+        self.assertFalse(self.env['gt.sales.territory'].search([('code', '=', 'IMPORT-FORGED')]))
+
     def test_views_registered(self):
         for name in ('view_territory_form', 'view_territory_list', 'view_assignment_form', 'view_customer_form'):
             self.assertTrue(self.env.ref('gt_field_sales_visit_planner.' + name).arch_db)
