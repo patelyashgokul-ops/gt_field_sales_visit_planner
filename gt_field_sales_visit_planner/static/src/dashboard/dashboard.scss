@@ -6,6 +6,20 @@
   box-shadow: none;
 }
 
+.o_gt_sales_dashboard .o_gt_sales_header p,
+.o_gt_sales_dashboard .o_gt_date_basis,
+.o_gt_sales_dashboard .o_gt_panel small {
+  color: #526477;
+}
+
+.o_gt_sales_dashboard .o_gt_kpi small {
+  color: #596a7d;
+}
+
+.o_gt_visit_execution .text-muted {
+  color: #5b6570 !important;
+}
+
 .o_gt_sales_dashboard .o_gt_tabs button {
   min-height: 44px;
 }
