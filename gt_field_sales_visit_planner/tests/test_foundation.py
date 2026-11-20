@@ -1,3 +1,8 @@
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from uuid import uuid4
+
+from odoo import api
 from odoo.exceptions import AccessError, ValidationError
 from odoo.tests import tagged
 
@@ -20,7 +25,7 @@ class TestFoundation(FieldSalesCase):
     def test_assignment_dates_overlap_and_eligibility(self):
         Assignment = self.env['gt.sales.territory.assignment']
         first = Assignment.create(self.assignment_vals(date_to='2026-01-31'))
-        with self.assertRaises((ValidationError, Exception)), self.cr.savepoint():
+        with self.assertRaises(ValidationError), self.cr.savepoint():
             Assignment.create(self.assignment_vals(date_from='2026-01-15'))
         with self.assertRaises((ValidationError, Exception)), self.cr.savepoint():
             Assignment.create(self.assignment_vals(date_from='2026-03-01', date_to='2026-02-01'))
@@ -65,3 +70,71 @@ class TestFoundation(FieldSalesCase):
     def test_views_registered(self):
         for name in ('view_territory_form', 'view_territory_list', 'view_assignment_form', 'view_customer_form'):
             self.assertTrue(self.env.ref('gt_field_sales_visit_planner.' + name).arch_db)
+
+    def test_portal_user_and_forged_relations(self):
+        portal = self.env['res.users'].with_context(no_reset_password=True).create({
+            'name': 'Field Portal', 'login': 'field_portal_' + uuid4().hex,
+            'group_ids': [(6, 0, [self.env.ref('base.group_portal').id])],
+        })
+        with self.assertRaises(ValidationError):
+            self.env['gt.sales.territory.assignment'].create(
+                self.assignment_vals(user=portal, date_from='2029-01-01'))
+        with self.assertRaises(ValidationError):
+            self.env['gt.sales.territory.customer'].create(
+                self.allocation_vals(partner=self.customer_b))
+        with self.assertRaises((AccessError, ValidationError)):
+            self.env['gt.sales.territory.assignment'].with_user(self.manager).create(
+                self.assignment_vals(territory=self.territory_b, user=self.salesperson_b))
+
+    def test_company_change_after_dependents(self):
+        self.env['gt.sales.territory.assignment'].create(self.assignment_vals())
+        with self.assertRaises(ValidationError):
+            self.territory_a.write({'company_id': self.company_b.id})
+
+    def test_concurrent_assignment_creation(self):
+        """Separate committed transactions exercise the salesperson row lock."""
+        registry = self.env.registry
+        company = self.env.ref('base.main_company')
+        user = self.env.ref('base.user_admin')
+        code = 'LOCK-' + uuid4().hex[:12]
+        with registry.cursor() as cr:
+            env = api.Environment(cr, 1, {})
+            territory = env['gt.sales.territory'].create({
+                'name': code, 'code': code, 'company_id': company.id,
+            })
+            territory_id = territory.id
+            cr.commit()
+
+        created = threading.Event()
+        release = threading.Event()
+
+        def worker(hold):
+            with registry.cursor() as cr:
+                env = api.Environment(cr, 1, {})
+                try:
+                    env['gt.sales.territory.assignment'].create({
+                        'territory_id': territory_id, 'company_id': company.id,
+                        'user_id': user.id, 'date_from': '2026-01-01',
+                    })
+                    if hold:
+                        created.set()
+                        release.wait(10)
+                    cr.commit()
+                    return 'created'
+                except ValidationError:
+                    cr.rollback()
+                    return 'rejected'
+
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(worker, True)
+                self.assertTrue(created.wait(10), 'First transaction did not create its assignment')
+                second = pool.submit(worker, False)
+                release.set()
+                self.assertEqual(sorted([first.result(15), second.result(15)]), ['created', 'rejected'])
+        finally:
+            release.set()
+            with registry.cursor() as cr:
+                cr.execute('DELETE FROM gt_sales_territory_assignment WHERE territory_id = %s', [territory_id])
+                cr.execute('DELETE FROM gt_sales_territory WHERE id = %s', [territory_id])
+                cr.commit()
