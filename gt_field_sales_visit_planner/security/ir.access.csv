@@ -40,4 +40,12 @@ restrict_visit_event_company,visit event company boundary,gt.sales.visit.event,,
 access_visit_event_manager_company,company visit execution evidence,gt.sales.visit.event,gt_field_sales_visit_planner.group_sales_manager,r,"[('company_id', 'in', company_ids)]"
 restrict_visit_exception_company,location exception company boundary,gt.sales.visit.location.exception,,crud,"[('company_id', 'in', company_ids)]"
 access_visit_exception_manager_company,company location exception review,gt.sales.visit.location.exception,gt_field_sales_visit_planner.group_sales_manager,ru,"[('company_id', 'in', company_ids)]"
+restrict_visit_outcome_company,visit outcome company boundary,gt.sales.visit.outcome,,crud,"[('company_id', 'in', company_ids)]"
+access_visit_outcome_salesperson,read visit outcomes,gt.sales.visit.outcome,gt_field_sales_visit_planner.group_field_salesperson,r,
+access_visit_outcome_manager,configure visit outcomes,gt.sales.visit.outcome,gt_field_sales_visit_planner.group_sales_manager,crud,
+restrict_product_interest_company,product interest company boundary,gt.sales.visit.product.interest,,crud,"[('company_id', 'in', company_ids)]"
+access_product_interest_salesperson,own visit product interests,gt.sales.visit.product.interest,gt_field_sales_visit_planner.group_field_salesperson,crud,"[('visit_id.user_id', '=', user.id)]"
+access_product_interest_manager,company visit product interests,gt.sales.visit.product.interest,gt_field_sales_visit_planner.group_sales_manager,crud,"[('company_id', 'in', company_ids)]"
+access_missed_visit_wizard,mark missed visit wizard,gt.sales.visit.missed.wizard,gt_field_sales_visit_planner.group_field_salesperson,crud,
+access_visit_correction_wizard,correct visit result wizard,gt.sales.visit.correction.wizard,gt_field_sales_visit_planner.group_sales_manager,crud,
 

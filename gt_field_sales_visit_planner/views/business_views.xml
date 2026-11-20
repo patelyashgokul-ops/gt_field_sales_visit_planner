@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="view_visit_business_result_form" model="ir.ui.view">
+    <field name="name">gt.sales.visit.business.result.form</field><field name="model">gt.sales.visit</field>
+    <field name="inherit_id" ref="gt_field_sales_visit_planner.view_visit_execution_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="action_complete_visit" type="object" string="Complete Visit" class="oe_highlight" invisible="state != 'checked_out_pending_outcome'"/>
+        <button name="action_open_missed" type="object" string="Mark Missed" invisible="state != 'planned'"/>
+        <button name="action_open_correction" type="object" string="Correct Result" groups="gt_field_sales_visit_planner.group_sales_manager" invisible="state != 'completed'"/>
+      </xpath>
+      <xpath expr="//field[@name='state']" position="attributes"><attribute name="statusbar_visible">draft,planned,checked_in,checked_out_pending_outcome,completed,missed,cancelled,rescheduled</attribute></xpath>
+      <xpath expr="//notebook" position="inside">
+        <page string="Business Result" invisible="state not in ['checked_out_pending_outcome','completed']">
+          <group><group><field name="outcome_id" domain="[('company_id','=',company_id),('active','=',True)]" readonly="state == 'completed'"/><field name="crm_lead_id" domain="[('partner_id','=',partner_id),('company_id','=',company_id)]" readonly="state == 'completed'"/><field name="followup_status"/></group>
+            <group><field name="followup_required" readonly="state == 'completed'"/><field name="next_followup_date" invisible="not followup_required" readonly="state == 'completed'"/><field name="next_followup_user_id" invisible="not followup_required" readonly="state == 'completed'"/><field name="next_followup_summary" invisible="not followup_required" readonly="state == 'completed'"/></group></group>
+          <group><field name="meeting_summary" readonly="state == 'completed'"/><field name="customer_feedback" readonly="state == 'completed'"/><field name="customer_objection" readonly="state == 'completed'"/></group>
+          <field name="product_interest_ids" readonly="state == 'completed'"><list editable="bottom"><field name="product_name"/><field name="interest_level"/><field name="notes"/></list></field>
+          <group string="Completion"><field name="completed_at"/><field name="completed_by"/><field name="outcome_snapshot"/></group>
+        </page>
+        <page string="Follow-up" invisible="not followup_required"><field name="activity_ids" /></page>
+        <page string="Missed Visit" invisible="state != 'missed'"><field name="missed_reason"/><field name="missed_at"/><field name="missed_by"/></page>
+      </xpath>
+      <xpath expr="//sheet" position="inside"><chatter/></xpath>
+    </field>
+  </record>
+
+  <record id="view_visit_outcome_list" model="ir.ui.view"><field name="name">gt.sales.visit.outcome.list</field><field name="model">gt.sales.visit.outcome</field><field name="arch" type="xml"><list><field name="sequence" widget="handle"/><field name="name"/><field name="code"/><field name="company_id"/><field name="requires_notes"/><field name="requires_followup"/><field name="followup_allowed"/><field name="active"/></list></field></record>
+  <record id="view_visit_outcome_form" model="ir.ui.view"><field name="name">gt.sales.visit.outcome.form</field><field name="model">gt.sales.visit.outcome</field><field name="arch" type="xml"><form><sheet><group><group><field name="name"/><field name="code"/><field name="company_id"/><field name="sequence"/><field name="active"/></group><group><field name="requires_notes"/><field name="requires_objection"/><field name="requires_followup"/><field name="followup_allowed"/><field name="is_positive"/><field name="is_unavailable"/></group></group><field name="description"/></sheet></form></field></record>
+  <record id="view_visit_missed_wizard_form" model="ir.ui.view"><field name="name">gt.sales.visit.missed.wizard.form</field><field name="model">gt.sales.visit.missed.wizard</field><field name="arch" type="xml"><form string="Mark Visit Missed"><group><field name="visit_id"/><field name="reason" required="1"/></group><footer><button name="action_apply" type="object" string="Mark Missed" class="oe_highlight"/><button string="Discard" special="cancel"/></footer></form></field></record>
+  <record id="view_visit_correction_wizard_form" model="ir.ui.view"><field name="name">gt.sales.visit.correction.wizard.form</field><field name="model">gt.sales.visit.correction.wizard</field><field name="arch" type="xml"><form string="Correct Visit Result"><group><field name="visit_id"/><field name="outcome_id"/><field name="meeting_summary"/><field name="customer_feedback"/><field name="customer_objection"/><field name="followup_required"/><field name="next_followup_date" invisible="not followup_required"/><field name="next_followup_user_id" invisible="not followup_required"/><field name="next_followup_summary" invisible="not followup_required"/><field name="reason" required="1"/></group><footer><button name="action_apply" type="object" string="Apply Correction" class="oe_highlight"/><button string="Discard" special="cancel"/></footer></form></field></record>
+
+  <record id="action_visit_outcomes" model="ir.actions.act_window"><field name="name">Visit Outcomes</field><field name="res_model">gt.sales.visit.outcome</field><field name="view_mode">list,form</field></record>
+  <record id="action_my_visit_followups" model="ir.actions.act_window"><field name="name">My Follow-ups</field><field name="res_model">mail.activity</field><field name="view_mode">list,form</field><field name="domain">[('gt_source_visit_id','!=',False),('user_id','=',uid)]</field></record>
+  <record id="action_team_visit_followups" model="ir.actions.act_window"><field name="name">Team Follow-ups</field><field name="res_model">mail.activity</field><field name="view_mode">list,form</field><field name="domain">[('gt_source_visit_id','!=',False)]</field></record>
+  <menuitem id="menu_visit_outcomes" name="Visit Outcomes" parent="gt_field_sales_visit_planner.menu_field_sales_config" action="action_visit_outcomes" sequence="60" groups="gt_field_sales_visit_planner.group_sales_manager,gt_field_sales_visit_planner.group_field_sales_admin"/>
+  <menuitem id="menu_my_visit_followups" name="My Follow-ups" parent="gt_field_sales_visit_planner.menu_field_sales" action="action_my_visit_followups" sequence="35" groups="gt_field_sales_visit_planner.group_field_salesperson"/>
+  <menuitem id="menu_team_visit_followups" name="Team Follow-ups" parent="gt_field_sales_visit_planner.menu_field_sales" action="action_team_visit_followups" sequence="36" groups="gt_field_sales_visit_planner.group_sales_manager,gt_field_sales_visit_planner.group_field_sales_admin"/>
+</odoo>
+

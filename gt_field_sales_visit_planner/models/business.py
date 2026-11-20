@@ -455,3 +455,16 @@ class SalesVisitBusinessEvent(models.Model):
         'followup_completed': 'cascade', 'followup_cancelled': 'cascade',
         'followup_reassigned': 'cascade', 'followup_deadline_changed': 'cascade',
     })
+
+
+class ResPartnerVisitHistory(models.Model):
+    _inherit = 'res.partner'
+
+    gt_field_visit_ids = fields.One2many('gt.sales.visit', 'partner_id', string='Field Visit History')
+
+
+class CrmLeadVisitHistory(models.Model):
+    _inherit = 'crm.lead'
+
+    gt_field_visit_ids = fields.One2many('gt.sales.visit', 'crm_lead_id', string='Field Visits')
+
