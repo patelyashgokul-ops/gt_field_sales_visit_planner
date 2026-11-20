@@ -148,13 +148,17 @@ class SalesVisitBusiness(models.Model):
         for line in self.product_interest_ids:
             if line.company_id != self.company_id:
                 raise ValidationError('Product interest must belong to the visit company.')
-        lead = self.env['crm.lead'].browse(values['crm_lead_id']) if 'crm_lead_id' in values else self.crm_lead_id
-        if lead:
-            lead.check_access('read')
-            if lead.company_id and lead.company_id != self.company_id:
-                raise ValidationError('The linked opportunity belongs to another company.')
-            if lead.partner_id != self.partner_id:
-                raise ValidationError('The opportunity customer must match this visit customer.')
+        # Recheck CRM permissions when setting/changing the relation and when finalizing.
+        # A result-only correction must not require a manager to read an unchanged,
+        # salesperson-restricted opportunity.
+        if 'crm_lead_id' in values or values is None:
+            lead = self.env['crm.lead'].browse(values['crm_lead_id']) if values and 'crm_lead_id' in values else self.crm_lead_id
+            if lead:
+                lead.check_access('read')
+                if lead.company_id and lead.company_id != self.company_id:
+                    raise ValidationError('The linked opportunity belongs to another company.')
+                if lead.partner_id != self.partner_id:
+                    raise ValidationError('The opportunity customer must match this visit customer.')
 
     def write(self, vals):
         protected = {'completed_at', 'completed_by', 'missed_at', 'missed_by', 'missed_reason',

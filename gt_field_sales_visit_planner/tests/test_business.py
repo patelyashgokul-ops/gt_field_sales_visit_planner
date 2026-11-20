@@ -187,15 +187,24 @@ class TestVisitBusiness(FieldSalesCase):
 
     def test_manager_correction_and_standard_activity_done_history(self):
         visit = self.make_visit()
+        self.salesperson_a.write({'group_ids': [(4, self.env.ref('sales_team.group_sale_salesman').id)]})
+        lead = self.env['crm.lead'].with_company(self.company_a).create({
+            'name': 'Restricted opportunity for correction test', 'partner_id': self.customer_a.id,
+            'company_id': self.company_a.id, 'user_id': self.salesperson_a.id,
+        })
         visit.with_user(self.salesperson_a).write({
-            'outcome_id': self.outcome.id, 'meeting_summary': 'Initial meeting notes',
+            'crm_lead_id': lead.id, 'outcome_id': self.outcome.id, 'meeting_summary': 'Initial meeting notes',
             'followup_required': True, 'next_followup_date': fields.Date.today() + timedelta(days=1),
             'next_followup_user_id': self.salesperson_a.id, 'next_followup_summary': 'Call back',
         })
         visit.with_user(self.salesperson_a).action_complete_visit()
         with self.assertRaises(AccessError):
             visit.with_user(self.salesperson_a).action_correct_business_result({'meeting_summary': 'Change'}, 'reason')
+        # Manager owns the Field Sales visit but cannot read the salesperson-only CRM lead.
+        with self.assertRaises(AccessError):
+            lead.with_user(self.manager).check_access('read')
         visit.with_user(self.manager).action_correct_business_result({'meeting_summary': 'Corrected notes'}, 'Typo correction')
+        self.assertEqual(visit.crm_lead_id, lead)
         self.assertEqual(visit.meeting_summary, 'Corrected notes')
         activity = visit.followup_activity_id
         activity.with_user(self.manager).write({'user_id': self.app_admin.id, 'date_deadline': fields.Date.today() + timedelta(days=3)})
