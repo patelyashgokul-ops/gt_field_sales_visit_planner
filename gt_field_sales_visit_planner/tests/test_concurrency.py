@@ -68,6 +68,83 @@ class TestConcurrentAssignment(TransactionCase):
                 cr.execute('DELETE FROM gt_sales_territory WHERE id = %s', [territory_id])
                 cr.commit()
 
+    def test_duplicate_customer_allocation_race(self):
+        """The partial unique index must arbitrate concurrent active mappings."""
+        registry = self.env.registry
+        company_id = self.env.ref('base.main_company').id
+        code = 'MAP-RACE-' + uuid4().hex[:12]
+        with registry.cursor() as cr:
+            partner_env = api.Environment(
+                cr, self.env.ref('base.user_admin').id,
+                {'allowed_company_ids': [company_id]},
+            )
+            partner = partner_env['res.partner'].sudo().create({'name': code})
+            partner_id = partner.id
+            cr.commit()
+        with registry.cursor() as cr:
+            cr.execute(
+                'INSERT INTO gt_sales_territory (name, code, company_id, active) '
+                'VALUES (%s, %s, %s, true) RETURNING id',
+                [code, code, company_id],
+            )
+            territory_id = cr.fetchone()[0]
+            cr.commit()
+
+        inserted = threading.Event()
+        attempting = threading.Event()
+        release = threading.Event()
+
+        def worker(first):
+            with registry.cursor() as cr:
+                cr.execute("SET LOCAL lock_timeout = '10s'")
+                if not first:
+                    attempting.set()
+                try:
+                    cr.execute(
+                        'INSERT INTO gt_sales_territory_customer '
+                        '(territory_id, company_id, partner_id, active) '
+                        'VALUES (%s, %s, %s, true)',
+                        [territory_id, company_id, partner_id],
+                    )
+                    if first:
+                        inserted.set()
+                        if not release.wait(10):
+                            raise TimeoutError('Concurrent mapping test timed out')
+                    cr.commit()
+                    return 'created'
+                except Exception as error:
+                    cr.rollback()
+                    if getattr(getattr(error, 'diag', None), 'constraint_name', '') == \
+                            'gt_sales_territory_customer_one_active_customer':
+                        return 'rejected'
+                    raise
+
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(worker, True)
+                self.assertTrue(inserted.wait(10))
+                second = pool.submit(worker, False)
+                self.assertTrue(attempting.wait(10))
+                time.sleep(0.2)
+                release.set()
+                self.assertEqual(sorted([first.result(15), second.result(15)]),
+                                 ['created', 'rejected'])
+            with registry.cursor() as cr:
+                cr.execute(
+                    'SELECT count(*) FROM gt_sales_territory_customer '
+                    'WHERE company_id = %s AND partner_id = %s AND active IS TRUE',
+                    [company_id, partner_id],
+                )
+                self.assertEqual(cr.fetchone()[0], 1)
+        finally:
+            release.set()
+            with registry.cursor() as cr:
+                cr.execute('DELETE FROM gt_sales_territory_customer WHERE territory_id = %s',
+                           [territory_id])
+                cr.execute('DELETE FROM gt_sales_territory WHERE id = %s', [territory_id])
+                cr.execute('DELETE FROM res_partner WHERE id = %s', [partner_id])
+                cr.commit()
+
     def test_duplicate_daily_plan_race(self):
         registry = self.env.registry
         company_id = self.env.ref('base.main_company').id
