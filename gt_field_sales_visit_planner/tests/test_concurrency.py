@@ -113,24 +113,24 @@ class TestConcurrentAssignment(TransactionCase):
         user_id = self.env.ref('base.user_admin').id
         code = 'RESCHEDULE-RACE-' + uuid4().hex[:10]
         with registry.cursor() as cr:
-            env = api.Environment(cr, user_id, {'allowed_company_ids': [company_id]}).sudo()
-            territory = env['gt.sales.territory'].create({
+            env = api.Environment(cr, user_id, {'allowed_company_ids': [company_id]})
+            territory = env['gt.sales.territory'].sudo().create({
                 'name': code, 'code': code, 'company_id': company_id,
             })
-            assignment = env['gt.sales.territory.assignment'].create({
+            assignment = env['gt.sales.territory.assignment'].sudo().create({
                 'territory_id': territory.id, 'company_id': company_id,
                 'user_id': user_id, 'date_from': '2031-01-01',
             })
-            partner = env['res.partner'].create({'name': code})
-            mapping = env['gt.sales.territory.customer'].create({
+            partner = env['res.partner'].sudo().create({'name': code})
+            mapping = env['gt.sales.territory.customer'].sudo().create({
                 'territory_id': territory.id, 'company_id': company_id,
                 'partner_id': partner.id,
             })
-            plan = env['gt.sales.visit.plan'].create({
+            plan = env['gt.sales.visit.plan'].sudo().create({
                 'company_id': company_id, 'user_id': user_id, 'visit_date': '2031-03-11',
                 'timezone': 'UTC', 'territory_id': territory.id,
             })
-            visit = env['gt.sales.visit'].create({
+            visit = env['gt.sales.visit'].sudo().create({
                 'plan_id': plan.id, 'partner_id': partner.id, 'sequence': 10,
             })
             territory_id, partner_id, plan_id, visit_id = territory.id, partner.id, plan.id, visit.id
@@ -142,12 +142,12 @@ class TestConcurrentAssignment(TransactionCase):
 
         def worker(first):
             with registry.cursor() as cr:
-                env = api.Environment(cr, user_id, {'allowed_company_ids': [company_id]}).sudo()
+                env = api.Environment(cr, user_id, {'allowed_company_ids': [company_id]})
                 cr.execute("SET LOCAL lock_timeout = '10s'")
                 if not first:
                     second_attempting.set()
                 try:
-                    replacement = env['gt.sales.visit'].browse(visit_id).action_reschedule(
+                    replacement = env['gt.sales.visit'].sudo().browse(visit_id).action_reschedule(
                         '2031-03-12', 'Concurrency test reschedule')
                     if first:
                         first_finished_action.set()
