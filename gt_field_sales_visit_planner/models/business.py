@@ -58,6 +58,7 @@ class SalesVisitOutcome(models.Model):
 
 
 class SalesVisitBusiness(models.Model):
+    _name = 'gt.sales.visit'
     _inherit = ['gt.sales.visit', 'mail.thread', 'mail.activity.mixin']
 
     state = fields.Selection(selection_add=[('missed', 'Missed'), ('completed', 'Completed')],
