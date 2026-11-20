@@ -45,7 +45,7 @@ class SalesReporting(models.AbstractModel):
         date_to = fields.Date.to_date(filters.get('date_to')) if filters.get('date_to') else today
         if date_to < date_from:
             raise ValidationError('End date must be on or after start date.')
-        if (date_to - date_from).days > self._MAX_PERIOD_DAYS:
+        if (date_to - date_from).days + 1 > self._MAX_PERIOD_DAYS:
             raise ValidationError('Choose a reporting period of 366 days or less.')
         timezone = company.partner_id.tz or self.env.user.tz or 'UTC'
         if timezone not in pytz.all_timezones_set:
@@ -171,7 +171,7 @@ class SalesReporting(models.AbstractModel):
         scope = self._scope_domain(f)
         confirmed = [('plan_id.state', '=', 'confirmed')]
         completed = visits.search_count(self._completed_domain(f))
-        eligible = visits.search_count(scope + confirmed + [('state', 'in', [
+        eligible = visits.search_count(scope + [('plan_id.confirmed_at', '!=', False), ('state', 'in', [
             'planned', 'checked_in', 'checked_out_pending_outcome', 'completed', 'missed'])])
         states = {
             'planned': visits.search_count(scope + confirmed + [('state', '=', 'planned')]),
@@ -196,6 +196,7 @@ class SalesReporting(models.AbstractModel):
             ('gt_source_visit_id.company_id', '=', f['company_id']),
             ('gt_source_visit_id.planned_date', '>=', f['date_from']),
             ('gt_source_visit_id.planned_date', '<=', f['date_to']),
+            ('gt_source_visit_id.followup_completed_at', '=', False),
         ]
         if f['territory_id']:
             domain.append(('gt_source_visit_id.territory_id', '=', f['territory_id']))
@@ -227,7 +228,7 @@ class SalesReporting(models.AbstractModel):
     @api.model
     def _trend_rows(self, f):
         grouped = self.env['gt.sales.visit']._read_group(
-            self._scope_domain(f) + [('plan_id.state', '=', 'confirmed')],
+            self._scope_domain(f) + [('plan_id.confirmed_at', '!=', False)],
             ['planned_date:day', 'state'], ['__count'], order='planned_date:day', limit=400,
         )
         points = {}
@@ -245,7 +246,7 @@ class SalesReporting(models.AbstractModel):
     @api.model
     def _salesperson_rows(self, f, limit=20):
         groups = self.env['gt.sales.visit']._read_group(
-            self._scope_domain(f) + [('plan_id.state', '=', 'confirmed')],
+            self._scope_domain(f) + [('plan_id.confirmed_at', '!=', False)],
             ['user_id', 'territory_id', 'state'], ['__count'], order='user_id, territory_id', limit=limit * 8,
         )
         values = {}
@@ -296,6 +297,7 @@ class SalesReporting(models.AbstractModel):
             ('gt_source_visit_id', '!=', False), ('active', '=', True),
             ('gt_source_visit_id.company_id', '=', f['company_id']),
             ('date_deadline', '>=', f['date_from']), ('date_deadline', '<=', f['date_to']),
+            ('gt_source_visit_id.followup_completed_at', '=', False),
         ]
         if f['territory_id']:
             domain.append(('gt_source_visit_id.territory_id', '=', f['territory_id']))
@@ -448,7 +450,7 @@ class SalesReporting(models.AbstractModel):
         f = self._validated_filters(filters)
         domain = self._scope_domain(f)
         if metric in ('eligible_planned', 'completion_rate', 'coverage'):
-            domain += [('plan_id.state', '=', 'confirmed'), ('state', 'in', [
+            domain += [('plan_id.confirmed_at', '!=', False), ('state', 'in', [
                 'planned', 'checked_in', 'checked_out_pending_outcome', 'completed', 'missed'])]
         elif metric == 'completed':
             domain = self._completed_domain(f)
