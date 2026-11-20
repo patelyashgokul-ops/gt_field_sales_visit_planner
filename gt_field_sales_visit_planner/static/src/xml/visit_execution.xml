@@ -4,14 +4,14 @@
         <div class="o_gt_visit_execution d-flex flex-column gap-2 my-2">
             <p class="text-muted mb-1">Location is captured only when you start check-in or check-out. Browser GPS is device-reported evidence, not cryptographic proof of presence.</p>
             <div class="d-flex flex-wrap gap-2">
-                <button t-if="visitState === 'planned'" type="button" class="btn btn-primary" t-att-disabled="this.pending()" t-on-click="() => this.onExecute('check_in')">
+                <button t-if="this.visitState === 'planned'" type="button" class="btn btn-primary" t-att-disabled="this.pending()" t-on-click="() => this.onExecute('check_in')">
                     <t t-if="this.pending()">Getting location...</t><t t-else="">Check In</t>
                 </button>
-                <button t-if="visitState === 'checked_in'" type="button" class="btn btn-primary" t-att-disabled="this.pending()" t-on-click="() => this.onExecute('check_out')">
+                <button t-if="this.visitState === 'checked_in'" type="button" class="btn btn-primary" t-att-disabled="this.pending()" t-on-click="() => this.onExecute('check_out')">
                     <t t-if="this.pending()">Getting location...</t><t t-else="">Check Out</t>
                 </button>
                 <button t-if="this.retryPayload() &amp;&amp; !this.pending()" type="button" class="btn btn-secondary" t-on-click="onRetry">Retry same request</button>
-                <button t-if="this.captureError() &amp;&amp; !this.pending()" type="button" class="btn btn-outline-secondary" t-on-click="() => this.onContinueWithoutLocation(visitState === 'planned' ? 'check_in' : 'check_out')">Continue without location for policy review</button>
+                <button t-if="this.captureError() &amp;&amp; !this.pending()" type="button" class="btn btn-outline-secondary" t-on-click="() => this.onContinueWithoutLocation(this.visitState === 'planned' ? 'check_in' : 'check_out')">Continue without location for policy review</button>
             </div>
             <div t-if="this.captureError()" class="alert alert-warning mb-0" role="status"><t t-esc="this.captureError()"/></div>
             <div t-if="this.error()" class="alert alert-danger mb-0" role="alert"><t t-esc="this.error()"/></div>

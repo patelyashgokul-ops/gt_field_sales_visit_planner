@@ -451,7 +451,9 @@ class SalesVisitExecution(models.Model):
         digest = hashlib.sha256(json.dumps({
             'event_type': event_type, 'visit_id': self.id, 'user_id': self.env.user.id,
             'latitude': gps.get('latitude'), 'longitude': gps.get('longitude'),
-            'accuracy_m': gps.get('accuracy_m'), 'client_acquired_at': gps.get('client_acquired_at'),
+            'accuracy_m': gps.get('accuracy_m'), 'client_acquired_at': (
+                fields.Datetime.to_string(gps['client_acquired_at']) if gps.get('client_acquired_at') else False
+            ),
         }, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         snapshot = dict(policy_values, company_id=company.id, policy_id=policy_record.id if policy_record else False,
                         policy_missing=not bool(policy_record), location_id=reference.id if reference else False,
@@ -672,7 +674,9 @@ class SalesVisitExecution(models.Model):
         digest = hashlib.sha256(json.dumps({
             'event_type': event_type, 'visit_id': self.id, 'user_id': self.env.user.id,
             'latitude': parsed.get('latitude'), 'longitude': parsed.get('longitude'),
-            'accuracy_m': parsed.get('accuracy_m'), 'client_acquired_at': parsed.get('client_acquired_at'),
+            'accuracy_m': parsed.get('accuracy_m'), 'client_acquired_at': (
+                fields.Datetime.to_string(parsed['client_acquired_at']) if parsed.get('client_acquired_at') else False
+            ),
         }, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         if request.payload_hash != digest:
             raise ValidationError('This request token was replayed with different GPS data.')
