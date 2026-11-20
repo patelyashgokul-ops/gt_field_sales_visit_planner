@@ -148,3 +148,52 @@ class TestSalesReporting(FieldSalesCase):
         service.get_dashboard_data(filters)
         query_count = self.cr.sql_log_count - queries_before
         self.assertLessEqual(query_count, 70, 'Dashboard SQL query count should stay bounded as records grow.')
+
+    def test_followup_and_location_exception_metrics_use_separate_sources(self):
+        _plan, visits = self._new_plan(self.salesperson_a, [self.shared_customer, self.customer_a])
+        policy = self.env['gt.sales.execution.policy'].search([
+            ('company_id', '=', self.company_a.id),
+        ], limit=1)
+        policy.with_user(self.manager).write({'missing_policy': 'review'})
+
+        followup_visit = visits[0]
+        gps = {'latitude': 12.0, 'longitude': 77.0, 'accuracy_m': 5,
+               'request_token': str(uuid.uuid4())}
+        followup_visit.with_user(self.salesperson_a).action_check_in(gps)
+        followup_visit.with_user(self.salesperson_a).action_check_out({
+            **gps, 'request_token': str(uuid.uuid4()),
+        })
+        self.outcome.with_user(self.manager).write({'requires_followup': True})
+        followup_visit.with_user(self.salesperson_a).write({
+            'outcome_id': self.outcome.id, 'meeting_summary': 'Follow-up report test',
+            'followup_required': True,
+            'next_followup_date': fields.Date.today() + timedelta(days=1),
+            'next_followup_user_id': self.salesperson_a.id,
+            'next_followup_summary': 'Return with requested information',
+        })
+        followup_visit.with_user(self.salesperson_a).action_complete_visit()
+        activity = followup_visit.followup_activity_id
+        # Simulate time passing while preserving the activity's source linkage.
+        overdue_date = fields.Date.subtract(fields.Date.today(), days=1)
+        self.env.cr.execute('UPDATE mail_activity SET date_deadline=%s WHERE id=%s',
+                            [overdue_date, activity.id])
+        activity.invalidate_recordset(['date_deadline'])
+
+        exception_visit = visits[1]
+        exception_visit.with_user(self.salesperson_a).action_check_in({
+            'request_token': str(uuid.uuid4()), 'explanation': 'Browser location permission was denied',
+        })
+        filters = {
+            'company_id': self.company_a.id, 'date_from': fields.Date.today(),
+            'date_to': fields.Date.today(), 'territory_id': self.territory_a.id,
+        }
+        service = self.env['gt.sales.reporting'].with_user(self.manager)
+        data = service.get_dashboard_data(filters)
+        self.assertEqual(data['kpis']['overdue_followups'], 1)
+        self.assertEqual(data['exceptions']['pending'], 1)
+        followup_rows = service.get_report_rows('followups', filters)
+        self.assertEqual(followup_rows[0]['status'], 'overdue')
+        exception_rows = service.get_report_rows('exceptions', filters)
+        self.assertEqual(exception_rows[0]['review_state'], 'pending')
+        self.assertNotIn('latitude', exception_rows[0])
+        self.assertNotIn('longitude', exception_rows[0])

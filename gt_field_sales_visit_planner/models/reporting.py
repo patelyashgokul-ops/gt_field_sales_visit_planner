@@ -304,7 +304,8 @@ class SalesReporting(models.AbstractModel):
         domain = [
             ('gt_source_visit_id', '!=', False), ('active', '=', True),
             ('gt_source_visit_id.company_id', '=', f['company_id']),
-            ('date_deadline', '>=', f['date_from']), ('date_deadline', '<=', f['date_to']),
+            ('gt_source_visit_id.planned_date', '>=', f['date_from']),
+            ('gt_source_visit_id.planned_date', '<=', f['date_to']),
             ('gt_source_visit_id.followup_completed_at', '=', False),
         ]
         if f['territory_id']:
@@ -335,10 +336,11 @@ class SalesReporting(models.AbstractModel):
         if f['user_id']:
             domain.append(('user_id', '=', f['user_id']))
         exceptions = self.env['gt.sales.visit.location.exception'].search(domain, order='create_date desc, id desc', limit=limit)
+        location_labels = dict(self.env['gt.sales.visit.event']._fields['location_status'].selection)
         return [{'visit_id': ex.visit_id.id, 'customer': ex.visit_id.partner_id.display_name,
                  'salesperson': ex.user_id.display_name, 'territory': ex.visit_id.territory_id.display_name,
                  'event': dict(ex._fields['event_type'].selection).get(ex.event_type, ex.event_type),
-                 'classification': dict(ex._fields['location_status'].selection).get(ex.location_status, ex.location_status),
+                 'classification': location_labels.get(ex.location_status, ex.location_status),
                  'review_state': ex.review_state, 'reason': dict(ex._fields['reason_code'].selection).get(ex.reason_code, ex.reason_code),
                  'reviewed_at': fields.Datetime.to_string(ex.reviewed_at) if ex.reviewed_at else ''}
                 for ex in exceptions]
