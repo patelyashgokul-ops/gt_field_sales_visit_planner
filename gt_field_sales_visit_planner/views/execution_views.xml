@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <record id="view_visit_execution_form" model="ir.ui.view">
+    <field name="name">gt.sales.visit.execution.form</field><field name="model">gt.sales.visit</field>
+    <field name="arch" type="xml"><form><header>
+      <field name="state" widget="statusbar" statusbar_visible="draft,planned,checked_in,checked_out_pending_outcome,cancelled,rescheduled"/>
+    </header><sheet>
+      <div class="oe_title"><h1><field name="name"/></h1></div>
+      <group><group><field name="partner_id"/><field name="user_id"/><field name="territory_id"/></group>
+        <group><field name="company_id" groups="base.group_multi_company"/><field name="planned_date"/><field name="planned_start_at"/><field name="planned_end_at"/></group></group>
+      <widget name="gt_visit_execution"/>
+      <group string="Execution Summary"><group><field name="checkin_at"/><field name="checkin_location_status"/><field name="checkin_accuracy_m"/></group>
+        <group><field name="checkout_at"/><field name="checkout_location_status"/><field name="checkout_accuracy_m"/><field name="actual_duration_minutes"/></group></group>
+      <notebook><page string="Planning"><field name="planning_notes"/><field name="cancellation_reason"/><field name="reschedule_reason"/></page>
+        <page string="Execution Audit"><field name="execution_event_ids" readonly="1"><list create="0" edit="0" delete="0" default_order="occurred_at,id"><field name="occurred_at"/><field name="event_type"/><field name="actor_user_id"/><field name="location_status"/><field name="distance_m"/><field name="accuracy_m"/><field name="explanation"/></list></field></page>
+        <page string="Location Exceptions"><field name="checkin_exception_id" readonly="1"/><field name="checkout_exception_id" readonly="1"/></page>
+      </notebook>
+    </sheet></form></field>
+  </record>
+
+  <record id="view_execution_policy_list" model="ir.ui.view"><field name="name">gt.sales.execution.policy.list</field><field name="model">gt.sales.execution.policy</field>
+    <field name="arch" type="xml"><list><field name="company_id"/><field name="require_checkin_gps"/><field name="require_checkout_gps"/><field name="default_radius_m"/><field name="max_accuracy_m"/><field name="missing_policy"/><field name="outside_policy"/></list></field>
+  </record>
+  <record id="view_execution_policy_form" model="ir.ui.view"><field name="name">gt.sales.execution.policy.form</field><field name="model">gt.sales.execution.policy</field>
+    <field name="arch" type="xml"><form><sheet><div class="oe_title"><h1><field name="name"/></h1></div>
+      <group><group><field name="company_id"/><field name="require_checkin_gps"/><field name="require_checkout_gps"/></group>
+        <group><field name="default_radius_m"/><field name="max_radius_m"/><field name="max_accuracy_m"/></group></group>
+      <group string="Exceptions"><group><field name="missing_policy"/><field name="not_configured_policy"/><field name="outside_policy"/></group>
+        <group><field name="low_accuracy_policy"/><field name="uncertain_policy"/><field name="checkin_early_tolerance_min"/><field name="checkin_late_tolerance_min"/></group></group>
+      <p class="text-muted">Allow with review records an exception; it does not mean GPS presence was verified. Policy values are snapshotted on each execution.</p>
+    </sheet></form></field>
+  </record>
+  <record id="view_customer_location_list" model="ir.ui.view"><field name="name">gt.sales.customer.location.list</field><field name="model">gt.sales.customer.location</field>
+    <field name="arch" type="xml"><list><field name="name"/><field name="partner_id"/><field name="company_id"/><field name="latitude"/><field name="longitude"/><field name="geofence_radius_m"/><field name="active"/><field name="approved_by"/><field name="approved_at"/></list></field>
+  </record>
+  <record id="view_customer_location_form" model="ir.ui.view"><field name="name">gt.sales.customer.location.form</field><field name="model">gt.sales.customer.location</field>
+    <field name="arch" type="xml"><form><sheet><div class="oe_title"><h1><field name="name"/></h1></div>
+      <group><group><field name="company_id"/><field name="partner_id"/><field name="active"/></group>
+        <group><field name="latitude"/><field name="longitude"/><field name="geofence_radius_m"/><field name="approved_by"/><field name="approved_at"/></group></group>
+      <field name="notes"/><p class="text-muted">Changing this reference does not change historical visit assessments.</p>
+    </sheet><chatter/></form></field>
+  </record>
+
+  <record id="view_location_exception_list" model="ir.ui.view"><field name="name">gt.sales.visit.location.exception.list</field><field name="model">gt.sales.visit.location.exception</field>
+    <field name="arch" type="xml"><list decoration-warning="review_state == 'pending'"><field name="create_date"/><field name="visit_id"/><field name="user_id"/><field name="company_id"/><field name="event_type"/><field name="reason_code"/><field name="location_status"/><field name="review_state"/><field name="reviewer_id"/></list></field>
+  </record>
+  <record id="view_location_exception_search" model="ir.ui.view"><field name="name">gt.sales.visit.location.exception.search</field><field name="model">gt.sales.visit.location.exception</field>
+    <field name="arch" type="xml"><search><field name="visit_id"/><field name="user_id"/><field name="company_id"/><field name="event_type"/><field name="reason_code"/><field name="review_state"/>
+      <filter name="pending" string="Pending Review" domain="[('review_state','=','pending')]"/><filter name="approved" string="Approved" domain="[('review_state','=','approved')]"/><filter name="rejected" string="Rejected" domain="[('review_state','=','rejected')]"/>
+      <group expand="0" string="Group By"><filter name="group_state" string="Review State" context="{'group_by':'review_state'}"/><filter name="group_user" string="Salesperson" context="{'group_by':'user_id'}"/><filter name="group_company" string="Company" context="{'group_by':'company_id'}"/></group>
+    </search></field>
+  </record>
+  <record id="view_location_exception_form" model="ir.ui.view"><field name="name">gt.sales.visit.location.exception.form</field><field name="model">gt.sales.visit.location.exception</field>
+    <field name="arch" type="xml"><form><header>
+      <button name="action_open_approve" type="object" string="Approve Exception" class="oe_highlight" groups="gt_field_sales_visit_planner.group_sales_manager" invisible="review_state != 'pending'"/>
+      <button name="action_open_reject" type="object" string="Reject Exception" groups="gt_field_sales_visit_planner.group_sales_manager" invisible="review_state != 'pending'"/>
+      <field name="review_state" widget="statusbar" statusbar_visible="pending,approved,rejected"/>
+    </header><sheet><group><group><field name="visit_id"/><field name="user_id"/><field name="company_id"/><field name="event_type"/></group>
+      <group><field name="reason_code"/><field name="location_status"/><field name="event_id"/><field name="reviewer_id"/><field name="reviewed_at"/></group></group>
+      <field name="explanation"/><field name="review_reason" readonly="1"/>
+      <p class="text-warning">Approval accepts the documented exception. It does not certify physical presence or change the GPS classification.</p>
+    </sheet></form></field>
+  </record>
+  <record id="view_exception_review_wizard" model="ir.ui.view"><field name="name">gt.sales.visit.exception.review.wizard.form</field><field name="model">gt.sales.visit.exception.review.wizard</field>
+    <field name="arch" type="xml"><form string="Review Location Exception"><group><field name="exception_id"/><field name="decision"/><field name="reason" required="1"/></group>
+      <footer><button name="action_apply" type="object" string="Apply Review" class="oe_highlight"/><button string="Discard" special="cancel"/></footer></form></field>
+  </record>
+
+  <record id="action_visit_execution" model="ir.actions.act_window"><field name="name">Visit Execution</field><field name="res_model">gt.sales.visit</field><field name="view_mode">list,form</field></record>
+  <record id="action_location_exceptions" model="ir.actions.act_window"><field name="name">Location Exceptions</field><field name="res_model">gt.sales.visit.location.exception</field><field name="view_mode">list,form</field><field name="context">{'search_default_pending': 1}</field></record>
+  <record id="action_customer_visit_locations" model="ir.actions.act_window"><field name="name">Customer Visit Locations</field><field name="res_model">gt.sales.customer.location</field><field name="view_mode">list,form</field></record>
+  <record id="action_execution_policies" model="ir.actions.act_window"><field name="name">GPS Policies</field><field name="res_model">gt.sales.execution.policy</field><field name="view_mode">list,form</field></record>
+
+  <menuitem id="menu_visit_execution" name="Visit Execution" parent="menu_field_sales" action="action_visit_execution" sequence="25" groups="group_field_salesperson"/>
+  <menuitem id="menu_location_exceptions" name="Location Exceptions" parent="menu_field_sales" action="action_location_exceptions" sequence="30" groups="group_sales_manager,group_field_sales_admin"/>
+  <menuitem id="menu_customer_visit_locations" name="Customer Visit Locations" parent="menu_field_sales_config" action="action_customer_visit_locations" sequence="40" groups="group_sales_manager,group_field_sales_admin"/>
+  <menuitem id="menu_execution_policies" name="GPS Policies" parent="menu_field_sales_config" action="action_execution_policies" sequence="50" groups="group_sales_manager,group_field_sales_admin"/>
+</odoo>

@@ -12,8 +12,15 @@
         'security/ir.access.csv',
         'views/territory_views.xml',
         'views/planning_views.xml',
+        'views/execution_views.xml',
         'wizard/reschedule_visit_views.xml',
     ],
+    'assets': {
+        'web.assets_backend': [
+            'gt_field_sales_visit_planner/static/src/js/visit_execution.js',
+            'gt_field_sales_visit_planner/static/src/xml/visit_execution.xml',
+        ],
+    },
     'installable': True,
     'application': True,
 }
