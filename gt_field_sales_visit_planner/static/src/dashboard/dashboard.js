@@ -1,6 +1,6 @@
 ﻿/** @odoo-module **/
 
-import { Component, onWillStart, signalObject } from "@odoo/owl";
+import { Component, onWillStart, proxy } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 
@@ -20,13 +20,12 @@ export class FieldSalesDashboard extends Component {
         this.orm = useService("orm");
         this.action = useService("action");
         this.notification = useService("notification");
-        this._state = signalObject({ loading: true, error: "", data: null, report: "overview", rows: [], reportLoading: false,
+        this.state = proxy({ loading: true, error: "", data: null, report: "overview", rows: [], reportLoading: false,
             filters: { company_id: "", date_from: "", date_to: "", territory_id: "", user_id: "" } });
         onWillStart(() => this.reload());
     }
 
     get reportOptions() { return REPORTS; }
-    get state() { return this._state.value; }
     get reportColumns() { return REPORTS[this.state.report]?.columns || []; }
     get maxTrend() { return Math.max(1, ...(this.state.data?.trends || []).map((x) => x.planned)); }
 
