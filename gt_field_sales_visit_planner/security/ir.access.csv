@@ -1,4 +1,4 @@
-﻿id,name,model_id,group_id/id,operation,domain
+id,name,model_id,group_id/id,operation,domain
 restrict_territory_company,territory company boundary,gt.sales.territory,,crud,"[('company_id', 'in', company_ids)]"
 restrict_assignment_company,assignment company boundary,gt.sales.territory.assignment,,crud,"[('company_id', 'in', company_ids)]"
 restrict_allocation_company,allocation company boundary,gt.sales.territory.customer,,crud,"[('company_id', 'in', company_ids)]"

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
   <record id="view_visit_execution_form" model="ir.ui.view">
     <field name="name">gt.sales.visit.execution.form</field><field name="model">gt.sales.visit</field>
@@ -47,7 +47,7 @@
   <record id="view_location_exception_search" model="ir.ui.view"><field name="name">gt.sales.visit.location.exception.search</field><field name="model">gt.sales.visit.location.exception</field>
     <field name="arch" type="xml"><search><field name="visit_id"/><field name="user_id"/><field name="company_id"/><field name="event_type"/><field name="reason_code"/><field name="review_state"/>
       <filter name="pending" string="Pending Review" domain="[('review_state','=','pending')]"/><filter name="approved" string="Approved" domain="[('review_state','=','approved')]"/><filter name="rejected" string="Rejected" domain="[('review_state','=','rejected')]"/>
-      <group expand="0" string="Group By"><filter name="group_state" string="Review State" context="{'group_by':'review_state'}"/><filter name="group_user" string="Salesperson" context="{'group_by':'user_id'}"/><filter name="group_company" string="Company" context="{'group_by':'company_id'}"/></group>
+      <group string="Group By"><filter name="group_state" string="Review State" context="{'group_by':'review_state'}"/><filter name="group_user" string="Salesperson" context="{'group_by':'user_id'}"/><filter name="group_company" string="Company" context="{'group_by':'company_id'}"/></group>
     </search></field>
   </record>
   <record id="view_location_exception_form" model="ir.ui.view"><field name="name">gt.sales.visit.location.exception.form</field><field name="model">gt.sales.visit.location.exception</field>
@@ -76,3 +76,4 @@
   <menuitem id="menu_customer_visit_locations" name="Customer Visit Locations" parent="menu_field_sales_config" action="action_customer_visit_locations" sequence="40" groups="group_sales_manager,group_field_sales_admin"/>
   <menuitem id="menu_execution_policies" name="GPS Policies" parent="menu_field_sales_config" action="action_execution_policies" sequence="50" groups="group_sales_manager,group_field_sales_admin"/>
 </odoo>
+
