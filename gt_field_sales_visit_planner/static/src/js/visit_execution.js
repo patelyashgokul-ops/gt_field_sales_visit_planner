@@ -2,7 +2,8 @@
 
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
-import { Component, useState } from "@odoo/owl";
+import { Component, signal, useProps } from "@odoo/owl";
+import { standardWidgetProps } from "@web/views/widgets/standard_widget_props";
 
 const STATUS_LABELS = {
     within_radius: "Within configured radius",
@@ -16,12 +17,15 @@ const STATUS_LABELS = {
 
 export class VisitExecutionWidget extends Component {
     static template = "gt_field_sales_visit_planner.VisitExecutionWidget";
-    static props = { record: Object, readonly: { type: Boolean, optional: true } };
+    static props = useProps(standardWidgetProps);
+    pending = signal(false);
+    error = signal("");
+    captureError = signal("");
+    retryPayload = signal(null);
 
     setup() {
         this.orm = useService("orm");
         this.notification = useService("notification");
-        this.state = useState({ pending: false, error: "", captureError: "", retryPayload: null });
     }
 
     get visitState() {
@@ -29,20 +33,20 @@ export class VisitExecutionWidget extends Component {
     }
 
     async onExecute(eventType) {
-        if (this.state.pending) {
+        if (this.pending()) {
             return;
         }
-        this.state.error = "";
-        this.state.captureError = "";
+        this.error.set("");
+        this.captureError.set("");
         if (!window.isSecureContext) {
-            this.state.captureError = "Location capture requires a secure browser context (HTTPS or localhost).";
+            this.captureError.set("Location capture requires a secure browser context (HTTPS or localhost).");
             return;
         }
         if (!navigator.geolocation) {
-            this.state.captureError = "This browser does not support location capture.";
+            this.captureError.set("This browser does not support location capture.");
             return;
         }
-        this.state.pending = true;
+        this.pending.set(true);
         navigator.geolocation.getCurrentPosition(
             (position) => this._submit(eventType, {
                 latitude: position.coords.latitude,
@@ -52,34 +56,34 @@ export class VisitExecutionWidget extends Component {
                 request_token: crypto.randomUUID(),
             }),
             (error) => {
-                this.state.pending = false;
+                this.pending.set(false);
                 const messages = {
                     1: "Location permission was denied.",
                     2: "The device could not determine its location.",
                     3: "Location capture timed out.",
                 };
-                this.state.captureError = messages[error.code] || "Location capture failed.";
+                this.captureError.set(messages[error.code] || "Location capture failed.");
             },
             { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
     }
 
     async onContinueWithoutLocation(eventType) {
-        if (!this.state.pending) {
-            this.state.pending = true;
+        if (!this.pending()) {
+            this.pending.set(true);
             await this._submit(eventType, {
                 request_token: crypto.randomUUID(),
-                explanation: this.state.captureError || "The browser did not provide a location.",
+                explanation: this.captureError() || "The browser did not provide a location.",
             });
         }
     }
 
     async onRetry() {
-        if (this.state.pending || !this.state.retryPayload) {
+        if (this.pending() || !this.retryPayload()) {
             return;
         }
-        const { eventType, payload } = this.state.retryPayload;
-        this.state.pending = true;
+        const { eventType, payload } = this.retryPayload();
+        this.pending.set(true);
         await this._submit(eventType, payload, true);
     }
 
@@ -88,22 +92,22 @@ export class VisitExecutionWidget extends Component {
         const visitId = this.props.record.resId;
         const requestPayload = retry ? payload : { ...payload };
         if (!retry) {
-            this.state.retryPayload = { eventType, payload: requestPayload };
+            this.retryPayload.set({ eventType, payload: requestPayload });
         }
         try {
             const result = await this.orm.call("gt.sales.visit", method, [[visitId], requestPayload]);
             await this.props.record.load();
-            this.state.retryPayload = null;
-            this.state.captureError = "";
+            this.retryPayload.set(null);
+            this.captureError.set("");
             const status = STATUS_LABELS[result.location_status] || "Recorded";
             this.notification.add(`${eventType === "check_in" ? "Check-in" : "Check-out"} recorded. ${status}.`, {
                 type: "success",
             });
         } catch (error) {
-            this.state.error = error?.data?.message || error.message || "The visit operation failed.";
-            this.notification.add(this.state.error, { type: "danger" });
+            this.error.set(error?.data?.message || error.message || "The visit operation failed.");
+            this.notification.add(this.error(), { type: "danger" });
         } finally {
-            this.state.pending = false;
+            this.pending.set(false);
         }
     }
 }
