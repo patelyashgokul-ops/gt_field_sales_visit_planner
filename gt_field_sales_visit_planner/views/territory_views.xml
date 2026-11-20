@@ -44,7 +44,7 @@
                 <field name="name"/><field name="code"/><field name="company_id"/>
                 <filter name="active" string="Active" domain="[('active', '=', True)]"/>
                 <filter name="inactive" string="Archived" domain="[('active', '=', False)]"/>
-                <group expand="0" string="Group By"><filter name="group_company" string="Company" context="{'group_by': 'company_id'}"/></group>
+                <filter name="group_company" string="Group by Company" context="{'group_by': 'company_id'}"/>
             </search>
         </field>
     </record>
@@ -66,7 +66,7 @@
         <field name="name">gt.sales.territory.assignment.search</field>
         <field name="model">gt.sales.territory.assignment</field>
         <field name="arch" type="xml">
-            <search><field name="territory_id"/><field name="user_id"/><field name="company_id"/><filter name="active" string="Active" domain="[('active', '=', True)]"/><filter name="inactive" string="Archived" domain="[('active', '=', False)]"/><group expand="0" string="Group By"><filter name="group_territory" string="Territory" context="{'group_by': 'territory_id'}"/><filter name="group_salesperson" string="Salesperson" context="{'group_by': 'user_id'}"/></group></search>
+            <search><field name="territory_id"/><field name="user_id"/><field name="company_id"/><filter name="active" string="Active" domain="[('active', '=', True)]"/><filter name="inactive" string="Archived" domain="[('active', '=', False)]"/><filter name="group_territory" string="Group by Territory" context="{'group_by': 'territory_id'}"/><filter name="group_salesperson" string="Group by Salesperson" context="{'group_by': 'user_id'}"/></search>
         </field>
     </record>
     <record id="view_customer_list" model="ir.ui.view">
@@ -87,7 +87,7 @@
         <field name="name">gt.sales.territory.customer.search</field>
         <field name="model">gt.sales.territory.customer</field>
         <field name="arch" type="xml">
-            <search><field name="partner_id"/><field name="territory_id"/><field name="company_id"/><filter name="active" string="Active" domain="[('active', '=', True)]"/><filter name="inactive" string="Archived" domain="[('active', '=', False)]"/><group expand="0" string="Group By"><filter name="group_territory" string="Territory" context="{'group_by': 'territory_id'}"/></group></search>
+            <search><field name="partner_id"/><field name="territory_id"/><field name="company_id"/><filter name="active" string="Active" domain="[('active', '=', True)]"/><filter name="inactive" string="Archived" domain="[('active', '=', False)]"/><filter name="group_territory" string="Group by Territory" context="{'group_by': 'territory_id'}"/></search>
         </field>
     </record>
     <record id="action_territory" model="ir.actions.act_window">

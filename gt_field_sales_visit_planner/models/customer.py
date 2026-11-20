@@ -51,6 +51,10 @@ class SalesTerritoryCustomer(models.Model):
             check_allowed_company(record)
         result = super().write(vals)
         self._validate_business()
+        if vals.get('active') is False:
+            # Make the release visible to the partial unique index before a
+            # replacement allocation is created in the same transaction.
+            self.flush_recordset(['active'])
         return result
 
     def unlink(self):
