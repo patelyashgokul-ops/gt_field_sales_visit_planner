@@ -15,6 +15,8 @@ const REPORTS = {
 
 export class FieldSalesDashboard extends Component {
     static template = "gt_field_sales_visit_planner.Dashboard";
+    get state() { return this._state; }
+    set state(value) { this._state = value; }
 
     setup() {
         this.orm = useService("orm");
