@@ -108,11 +108,24 @@ class TestFoundation(FieldSalesCase):
             'group_ids': [(6, 0, [self.env.ref('base.group_portal').id])],
         })
         public = self.env.ref('base.public_user')
-        for user in (portal, public):
-            for model in ('gt.sales.territory', 'gt.sales.visit.plan', 'gt.sales.visit',
-                          'gt.sales.visit.event', 'gt.sales.visit.location.exception'):
-                with self.assertRaises(AccessError):
-                    self.env[model].with_user(user).check_access('read')
+        guarded_models = (
+            'gt.sales.territory', 'gt.sales.territory.assignment', 'gt.sales.territory.customer',
+            'gt.sales.visit.plan', 'gt.sales.visit', 'gt.sales.execution.policy',
+            'gt.sales.customer.location', 'gt.sales.visit.event',
+            'gt.sales.visit.location.exception', 'gt.sales.visit.execution.request',
+            'gt.sales.visit.outcome', 'gt.sales.visit.product.interest',
+            'gt.sales.visit.reschedule.wizard', 'gt.sales.plan.cancel.wizard',
+            'gt.sales.visit.cancel.wizard', 'gt.sales.plan.amend.wizard',
+            'gt.sales.visit.exception.review.wizard', 'gt.sales.visit.missed.wizard',
+            'gt.sales.visit.correction.wizard',
+        )
+        for user in (portal, public, self.unauthorized):
+            for model_name in guarded_models:
+                model = self.env[model_name].with_user(user)
+                for operation in ('read', 'create', 'write', 'unlink'):
+                    self.assertFalse(model.has_access(operation), f'{user.login} unexpectedly has {operation} on {model_name}')
+                    with self.assertRaises(AccessError):
+                        model.check_access(operation)
         with self.assertRaises(ValidationError):
             self.env['gt.sales.territory.assignment'].create(
                 self.assignment_vals(user=portal, date_from='2029-01-01'))
