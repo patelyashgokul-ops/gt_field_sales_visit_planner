@@ -191,10 +191,19 @@ class TestVisitBusiness(FieldSalesCase):
             'outcome_id': self.general.id, 'meeting_summary': 'Import protection test',
         })
         visit.with_user(self.salesperson_a).action_complete_visit()
-        with self.assertRaises(AccessError):
-            visit.with_user(self.salesperson_a).load(
-                ['completed_at'], [[fields.Datetime.to_string(fields.Datetime.now() + timedelta(days=1))]])
-        self.assertEqual(visit.completed_at, fields.Datetime.to_datetime(visit.completed_at))
+        xmlid = 'p04_import_test_visit_%s' % visit.id
+        self.env['ir.model.data'].create({
+            'module': 'gt_field_sales_visit_planner', 'name': xmlid,
+            'model': 'gt.sales.visit', 'res_id': visit.id, 'noupdate': True,
+        })
+        original_completed_at = visit.completed_at
+        result = self.env['gt.sales.visit'].with_user(self.salesperson_a).load(
+            ['id', 'completed_at'], [[f'gt_field_sales_visit_planner.{xmlid}',
+                                      fields.Datetime.to_string(original_completed_at + timedelta(days=1))]])
+        self.assertFalse(result['ids'])
+        self.assertTrue(result['messages'])
+        visit.invalidate_recordset(['completed_at'])
+        self.assertEqual(visit.completed_at, original_completed_at)
 
     def test_manager_correction_and_standard_activity_done_history(self):
         visit = self.make_visit()
