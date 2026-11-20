@@ -400,11 +400,23 @@ class SalesVisitExecution(models.Model):
         return models.Model.write(self, vals)
 
     def _lock_for_planning_transition(self):
-        # Lock order: salesperson row, then visit row. Execution and P02 planning
-        # transitions use the same order so cancellation/reschedule cannot race check-in.
-        self.env.cr.execute('SELECT id FROM res_users WHERE id = %s FOR UPDATE', [self.user_id.id])
-        self.env.cr.execute('SELECT id FROM gt_sales_visit WHERE id = %s FOR UPDATE', [self.id])
-        self.invalidate_recordset(['state', 'plan_id', 'partner_id', 'reschedule_origin_id'])
+        # Shared lock order for planning and execution: salesperson, plans, visits.
+        # Plan cancellation locks the complete plan before checking child states,
+        # so it cannot race a check-in and overwrite the resulting state.
+        user_ids = sorted(set(self.mapped('user_id').ids))
+        plan_ids = sorted(set(self.mapped('plan_id').ids))
+        visit_ids = sorted(self.ids)
+        if user_ids:
+            self.env.cr.execute(
+                'SELECT id FROM res_users WHERE id = ANY(%s) ORDER BY id FOR UPDATE', [user_ids])
+        if plan_ids:
+            self.env.cr.execute(
+                'SELECT id FROM gt_sales_visit_plan WHERE id = ANY(%s) ORDER BY id FOR UPDATE', [plan_ids])
+        if visit_ids:
+            self.env.cr.execute(
+                'SELECT id FROM gt_sales_visit WHERE id = ANY(%s) ORDER BY id FOR UPDATE', [visit_ids])
+        self.invalidate_recordset(['state', 'plan_id', 'partner_id', 'reschedule_origin_id', 'user_id',
+                                   'company_id', 'territory_id', 'checkin_at', 'checkout_at'])
 
     def copy(self, default=None):
         self.ensure_one()

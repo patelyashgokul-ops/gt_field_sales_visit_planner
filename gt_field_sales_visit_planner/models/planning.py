@@ -94,6 +94,8 @@ class SalesVisitPlan(models.Model):
             raise ValidationError('The salesperson is not assigned to this territory on the plan date.')
 
     def write(self, vals):
+        self.check_access('write')
+        self._lock_for_planning_transition()
         protected = {'company_id', 'user_id', 'visit_date', 'territory_id', 'timezone'}
         for plan in self:
             check_allowed_company(plan)
@@ -108,6 +110,23 @@ class SalesVisitPlan(models.Model):
             plan._validate_plan_context()
         return result
 
+    def _lock_for_planning_transition(self):
+        """Lock salesperson, plan, then child visits in a stable order."""
+        user_ids = sorted(set(self.mapped('user_id').ids))
+        plan_ids = sorted(self.ids)
+        if user_ids:
+            self.env.cr.execute(
+                'SELECT id FROM res_users WHERE id = ANY(%s) ORDER BY id FOR UPDATE', [user_ids])
+        if plan_ids:
+            self.env.cr.execute(
+                'SELECT id FROM gt_sales_visit_plan WHERE id = ANY(%s) ORDER BY id FOR UPDATE', [plan_ids])
+            self.env.cr.execute(
+                'SELECT id FROM gt_sales_visit WHERE plan_id = ANY(%s) ORDER BY id FOR UPDATE', [plan_ids])
+            visit_ids = [row[0] for row in self.env.cr.fetchall()]
+            visits = self.env['gt.sales.visit'].browse(visit_ids)
+            visits.invalidate_recordset(['state', 'plan_id', 'partner_id', 'sequence'])
+        self.invalidate_recordset(['state', 'user_id', 'company_id', 'visit_date', 'timezone', 'territory_id', 'visit_ids'])
+
     def _validate_plan_context(self):
         check_allowed_company(self)
         self._validate_timezone(self.timezone)
@@ -117,6 +136,7 @@ class SalesVisitPlan(models.Model):
 
     def action_confirm(self):
         self.check_access('write')
+        self._lock_for_planning_transition()
         for plan in self:
             check_allowed_company(plan)
             if plan.state != 'draft':
@@ -145,6 +165,7 @@ class SalesVisitPlan(models.Model):
         self.check_access('write')
         if not reason or not reason.strip():
             raise ValidationError('A cancellation reason is required.')
+        self._lock_for_planning_transition()
         for plan in self:
             check_allowed_company(plan)
             if plan.state == 'cancelled':
@@ -174,6 +195,7 @@ class SalesVisitPlan(models.Model):
         """Manager-only, auditable correction for a confirmed plan before execution."""
         self.ensure_one()
         self.check_access('write')
+        self._lock_for_planning_transition()
         check_allowed_company(self)
         if not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
             raise AccessError('Only a Sales Manager can amend a confirmed plan.')
@@ -210,6 +232,8 @@ class SalesVisitPlan(models.Model):
                 'view_mode': 'form', 'target': 'new', 'context': {'default_plan_id': self.id}}
 
     def unlink(self):
+        self.check_access('unlink')
+        self._lock_for_planning_transition()
         if any(plan.state != 'draft' for plan in self):
             raise AccessError('Confirmed and cancelled plan history cannot be deleted.')
         for plan in self:
@@ -337,6 +361,8 @@ class SalesVisit(models.Model):
                     raise ValidationError('This time window overlaps another visit for the salesperson.')
 
     def write(self, vals):
+        self.check_access('write')
+        self._lock_for_planning_transition()
         protected = {'plan_id', 'partner_id', 'sequence', 'planned_start_at', 'planned_end_at', 'crm_lead_id'}
         for visit in self:
             check_allowed_company(visit.plan_id)

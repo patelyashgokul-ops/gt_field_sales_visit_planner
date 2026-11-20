@@ -169,6 +169,12 @@ class SalesVisitBusiness(models.Model):
                     'product_interest_ids', 'followup_required', 'next_followup_date', 'next_followup_user_id',
                     'next_followup_summary', 'crm_lead_id'}
         for visit in self:
+            if business.intersection(vals):
+                visit._lock_for_planning_transition()
+                visit.invalidate_recordset(['state', 'company_id', 'partner_id', 'territory_id', 'user_id',
+                                            'outcome_id', 'meeting_summary', 'customer_feedback',
+                                            'customer_objection', 'followup_required', 'next_followup_date',
+                                            'next_followup_user_id', 'next_followup_summary', 'crm_lead_id'])
             visit._check_business_actor()
             if 'state' in vals:
                 raise AccessError('Use the explicit visit completion or missed action to change state.')
@@ -351,22 +357,34 @@ class SalesVisitProductInterest(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        visit_ids = sorted({vals.get('visit_id') for vals in vals_list if vals.get('visit_id')})
+        visits = self.env['gt.sales.visit'].browse(visit_ids)
+        visits._lock_for_planning_transition()
         for vals in vals_list:
             visit = self.env['gt.sales.visit'].browse(vals.get('visit_id'))
+            visit.invalidate_recordset(['state', 'company_id', 'user_id'])
             visit._check_business_actor()
             if visit.state != 'checked_out_pending_outcome':
                 raise UserError('Product interests can only be entered before visit completion.')
         return super().create(vals_list)
 
     def write(self, vals):
+        if 'visit_id' in vals and any(line.visit_id.id != vals['visit_id'] for line in self):
+            raise AccessError('Product interest lines cannot be moved to another visit.')
+        visits = self.mapped('visit_id')
+        visits._lock_for_planning_transition()
         for line in self:
+            line.visit_id.invalidate_recordset(['state', 'company_id', 'user_id'])
             line.visit_id._check_business_actor()
             if line.visit_id.state != 'checked_out_pending_outcome':
                 raise AccessError('Product interests on completed visits are protected.')
         return super().write(vals)
 
     def unlink(self):
+        visits = self.mapped('visit_id')
+        visits._lock_for_planning_transition()
         for line in self:
+            line.visit_id.invalidate_recordset(['state', 'company_id', 'user_id'])
             line.visit_id._check_business_actor()
             if line.visit_id.state != 'checked_out_pending_outcome':
                 raise AccessError('Product interests on completed visits are protected.')
