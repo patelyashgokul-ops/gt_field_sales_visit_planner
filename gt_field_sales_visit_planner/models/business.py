@@ -53,7 +53,7 @@ class SalesVisitOutcome(models.Model):
 
 
 class SalesVisitBusiness(models.Model):
-    _inherit = 'gt.sales.visit'
+    _inherit = ['gt.sales.visit', 'mail.thread', 'mail.activity.mixin']
 
     state = fields.Selection(selection_add=[('missed', 'Missed'), ('completed', 'Completed')],
                              ondelete={'missed': 'set default', 'completed': 'set default'})
@@ -67,6 +67,7 @@ class SalesVisitBusiness(models.Model):
     next_followup_user_id = fields.Many2one('res.users', check_company=True)
     next_followup_summary = fields.Char()
     followup_activity_id = fields.Many2one('mail.activity', readonly=True, copy=False, ondelete='set null')
+    followup_completed_at = fields.Datetime(readonly=True, copy=False)
     followup_status = fields.Selection([
         ('none', 'No Follow-up'), ('scheduled', 'Scheduled'), ('due', 'Due Today'),
         ('overdue', 'Overdue'), ('completed', 'Completed'), ('cancelled', 'Cancelled / Removed'),
@@ -78,13 +79,15 @@ class SalesVisitBusiness(models.Model):
     missed_at = fields.Datetime(readonly=True, copy=False)
     missed_by = fields.Many2one('res.users', readonly=True, copy=False)
 
-    @api.depends('followup_required', 'followup_activity_id', 'followup_activity_id.active',
+    @api.depends('followup_required', 'followup_completed_at', 'followup_activity_id', 'followup_activity_id.active',
                  'followup_activity_id.date_deadline', 'followup_activity_id.state')
     def _compute_followup_status(self):
         for visit in self:
             activity = visit.followup_activity_id
             if not visit.followup_required:
                 visit.followup_status = 'none'
+            elif visit.followup_completed_at:
+                visit.followup_status = 'completed'
             elif not activity:
                 visit.followup_status = 'cancelled'
             elif not activity.active:
@@ -226,6 +229,22 @@ class SalesVisitBusiness(models.Model):
         })
         return True
 
+    def action_open_missed(self):
+        self.ensure_one()
+        self._check_business_actor()
+        if self.state != 'planned':
+            raise UserError('Only unexecuted planned visits can be marked missed.')
+        return {'type': 'ir.actions.act_window', 'res_model': 'gt.sales.visit.missed.wizard',
+                'view_mode': 'form', 'target': 'new', 'context': {'default_visit_id': self.id}}
+
+    def action_open_correction(self):
+        self.ensure_one()
+        self._check_business_actor()
+        if self.state != 'completed' or not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
+            raise AccessError('Only a Sales Manager can correct a completed visit.')
+        return {'type': 'ir.actions.act_window', 'res_model': 'gt.sales.visit.correction.wizard',
+                'view_mode': 'form', 'target': 'new', 'context': {'default_visit_id': self.id}}
+
     def action_correct_business_result(self, values, reason):
         self.ensure_one()
         self.check_access('write')
@@ -248,6 +267,16 @@ class SalesVisitBusiness(models.Model):
                         'is_positive': out.is_positive, 'is_unavailable': out.is_unavailable}
             values = dict(values, outcome_snapshot=snapshot)
         models.Model.write(self, values)
+        activity = self.followup_activity_id
+        if activity:
+            if not values.get('followup_required', self.followup_required):
+                activity.write({'active': False})
+            elif any(key in values for key in ('next_followup_date', 'next_followup_user_id', 'next_followup_summary')):
+                activity.write({
+                    'date_deadline': values.get('next_followup_date', self.next_followup_date),
+                    'user_id': values.get('next_followup_user_id', self.next_followup_user_id.id),
+                    'summary': values.get('next_followup_summary', self.next_followup_summary),
+                })
         self.env['gt.sales.visit.event'].sudo().create({
             'visit_id': self.id, 'company_id': self.company_id.id, 'actor_user_id': self.env.user.id,
             'event_type': 'business_result_corrected', 'occurred_at': fields.Datetime.now(),
@@ -329,20 +358,92 @@ class MailActivityVisitFollowup(models.Model):
                     visit = activity.gt_source_visit_id
                     if fields.Date.to_date(vals['date_deadline']) < fields.Date.to_date(visit.completed_at):
                         raise ValidationError('Follow-up date cannot precede visit completion.')
-        return super().write(vals)
+        before = {}
+        if sourced:
+            before = {activity.id: {'user_id': activity.user_id.id, 'date_deadline': fields.Date.to_string(activity.date_deadline),
+                                    'summary': activity.summary} for activity in sourced}
+        result = super().write(vals)
+        for activity in sourced:
+            visit = activity.gt_source_visit_id
+            event_type = 'followup_reassigned' if 'user_id' in vals else (
+                'followup_deadline_changed' if 'date_deadline' in vals else 'business_result_corrected')
+            self.env['gt.sales.visit.event'].sudo().create({
+                'visit_id': visit.id, 'company_id': visit.company_id.id, 'actor_user_id': self.env.user.id,
+                'event_type': event_type, 'occurred_at': fields.Datetime.now(), 'location_status': 'not_required',
+                'policy_snapshot': {'before': before[activity.id], 'after': {
+                    'user_id': activity.user_id.id, 'date_deadline': fields.Date.to_string(activity.date_deadline),
+                    'summary': activity.summary}},
+            })
+        return result
 
     def action_feedback(self, feedback=False, attachment_ids=None):
         for activity in self.filtered('gt_source_visit_id'):
-            activity.gt_source_visit_id._check_business_actor()
+            visit = activity.gt_source_visit_id
+            visit._check_business_actor()
+            completed_at = fields.Datetime.now()
             self.env['gt.sales.visit.event'].sudo().create({
-                'visit_id': activity.gt_source_visit_id.id, 'company_id': activity.gt_source_visit_id.company_id.id,
+                'visit_id': visit.id, 'company_id': visit.company_id.id,
                 'actor_user_id': self.env.user.id, 'event_type': 'followup_completed',
-                'occurred_at': fields.Datetime.now(), 'location_status': 'not_required',
+                'occurred_at': completed_at, 'location_status': 'not_required',
                 'policy_snapshot': {'activity_id': activity.id}, 'explanation': feedback or '',
             })
+            models.Model.write(visit, {'followup_completed_at': completed_at})
         return super().action_feedback(feedback=feedback, attachment_ids=attachment_ids)
 
     def unlink(self):
         if self.filtered('gt_source_visit_id') and not self.env.context.get('gt_followup_done'):
             raise AccessError('Use the standard Mark Done action; source follow-up history cannot be deleted.')
         return super().unlink()
+
+
+class SalesVisitMissedWizard(models.TransientModel):
+    _name = 'gt.sales.visit.missed.wizard'
+    _description = 'Mark Field Visit Missed'
+
+    visit_id = fields.Many2one('gt.sales.visit', required=True, readonly=True)
+    reason = fields.Text(required=True)
+
+    def action_apply(self):
+        self.ensure_one()
+        self.visit_id.action_mark_missed(self.reason)
+        return {'type': 'ir.actions.act_window_close'}
+
+
+class SalesVisitCorrectionWizard(models.TransientModel):
+    _name = 'gt.sales.visit.correction.wizard'
+    _description = 'Correct Visit Business Result'
+
+    visit_id = fields.Many2one('gt.sales.visit', required=True, readonly=True)
+    outcome_id = fields.Many2one('gt.sales.visit.outcome', check_company=True)
+    meeting_summary = fields.Text()
+    customer_feedback = fields.Text()
+    customer_objection = fields.Text()
+    followup_required = fields.Boolean()
+    next_followup_date = fields.Date()
+    next_followup_user_id = fields.Many2one('res.users', check_company=True)
+    next_followup_summary = fields.Char()
+    reason = fields.Text(required=True)
+
+    def action_apply(self):
+        self.ensure_one()
+        values = {key: self[key].id if self._fields[key].type == 'many2one' else self[key]
+                  for key in ('outcome_id', 'meeting_summary', 'customer_feedback', 'customer_objection',
+                              'followup_required', 'next_followup_date', 'next_followup_user_id', 'next_followup_summary')
+                  if self[key]}
+        self.visit_id.action_correct_business_result(values, self.reason)
+        return {'type': 'ir.actions.act_window_close'}
+
+
+class SalesVisitBusinessEvent(models.Model):
+    _inherit = 'gt.sales.visit.event'
+
+    event_type = fields.Selection(selection_add=[
+        ('visit_completed', 'Visit Completed'), ('visit_missed', 'Visit Marked Missed'),
+        ('business_result_corrected', 'Business Result Corrected'),
+        ('followup_completed', 'Follow-up Completed'), ('followup_cancelled', 'Follow-up Cancelled'),
+        ('followup_reassigned', 'Follow-up Reassigned'), ('followup_deadline_changed', 'Follow-up Deadline Changed'),
+    ], ondelete={
+        'visit_completed': 'cascade', 'visit_missed': 'cascade', 'business_result_corrected': 'cascade',
+        'followup_completed': 'cascade', 'followup_cancelled': 'cascade',
+        'followup_reassigned': 'cascade', 'followup_deadline_changed': 'cascade',
+    })
