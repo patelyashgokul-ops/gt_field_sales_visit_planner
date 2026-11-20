@@ -99,7 +99,7 @@ class SalesVisitPlan(models.Model):
                 raise UserError('Confirmed or cancelled plans require an authorized planning action.')
             if 'user_id' in vals and not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
                 raise AccessError('Salespersons can only plan their own visits.')
-            if vals.get('state') and not self.env.context.get('_planning_transition'):
+            if vals.get('state'):
                 raise AccessError('Use the confirm or cancellation action to change plan state.')
         result = super().write(vals)
         for plan in self:
@@ -128,8 +128,8 @@ class SalesVisitPlan(models.Model):
             plan._validate_sequences(visits)
             visits._validate_eligibility()
             visits._validate_time_windows()
-            visits.with_context(_planning_transition=True).write({'state': 'planned'})
-            plan.with_context(_planning_transition=True).write({
+            visits._apply_transition({'state': 'planned'})
+            super(SalesVisitPlan, plan).write({
                 'state': 'confirmed', 'confirmed_at': fields.Datetime.now(), 'confirmed_by': self.env.user.id,
             })
         return True
@@ -149,14 +149,22 @@ class SalesVisitPlan(models.Model):
                 raise UserError('This plan is already cancelled.')
             if plan.user_id != self.env.user and not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
                 raise AccessError('You can only cancel your own plan.')
-            plan.visit_ids.filtered(lambda v: v.state in ('draft', 'planned', 'rescheduled')).write({
+            plan.visit_ids.filtered(lambda v: v.state in ('draft', 'planned', 'rescheduled'))._apply_transition({
                 'state': 'cancelled', 'cancellation_reason': reason.strip(),
             })
-            plan.with_context(_planning_transition=True).write({
+            super(SalesVisitPlan, plan).write({
                 'state': 'cancelled', 'cancellation_reason': reason.strip(),
                 'cancelled_at': fields.Datetime.now(), 'cancelled_by': self.env.user.id,
             })
         return True
+
+    def action_open_cancel(self):
+        self.ensure_one()
+        check_allowed_company(self)
+        if self.user_id != self.env.user and not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
+            raise AccessError('You can only cancel your own plan.')
+        return {'type': 'ir.actions.act_window', 'res_model': 'gt.sales.plan.cancel.wizard',
+                'view_mode': 'form', 'target': 'new', 'context': {'default_plan_id': self.id}}
 
     def unlink(self):
         if any(plan.state != 'draft' for plan in self):
@@ -230,7 +238,7 @@ class SalesVisit(models.Model):
         for visit in self:
             plan = visit.plan_id
             check_allowed_company(plan)
-            if plan.state != 'draft' and not self.env.context.get('_planning_transition'):
+            if plan.state != 'draft':
                 raise UserError('Confirmed visits can only be changed by an authorized planning action.')
             self._check_plan_owner(plan)
             if visit.partner_id.company_id and visit.partner_id.company_id != plan.company_id:
@@ -277,9 +285,9 @@ class SalesVisit(models.Model):
         for visit in self:
             check_allowed_company(visit.plan_id)
             self._check_plan_owner(visit.plan_id)
-            if visit.state not in ('draft',) and not self.env.context.get('_planning_transition'):
+            if visit.state not in ('draft',):
                 raise UserError('Only draft visits can be edited directly.')
-            if 'state' in vals and not self.env.context.get('_planning_transition'):
+            if 'state' in vals:
                 raise AccessError('Use the plan action to change visit status.')
             if protected.intersection(vals) and visit.plan_id.state != 'draft':
                 raise UserError('Visits in confirmed plans are immutable.')
@@ -296,9 +304,18 @@ class SalesVisit(models.Model):
             self._check_plan_owner(visit.plan_id)
             if visit.state not in ('draft', 'planned'):
                 raise UserError('Only draft or planned visits can be cancelled.')
-        return self.with_context(_planning_transition=True).write({
+        return self._apply_transition({
             'state': 'cancelled', 'cancellation_reason': reason.strip(),
         })
+
+    def action_open_reschedule(self):
+        self.ensure_one()
+        check_allowed_company(self.plan_id)
+        self._check_plan_owner(self.plan_id)
+        if self.state not in ('draft', 'planned'):
+            raise UserError('Only draft or planned visits can be rescheduled.')
+        return {'type': 'ir.actions.act_window', 'res_model': 'gt.sales.visit.reschedule.wizard',
+                'view_mode': 'form', 'target': 'new', 'context': {'default_visit_id': self.id}}
 
     def action_reschedule(self, target_date, reason, target_plan=None):
         self.ensure_one()
@@ -329,8 +346,11 @@ class SalesVisit(models.Model):
             'planned_start_at': False, 'planned_end_at': False,
             'reschedule_origin_id': self.id, 'reschedule_reason': reason.strip(),
         })
-        self.with_context(_planning_transition=True).write({'state': 'rescheduled', 'reschedule_reason': reason.strip()})
+        self._apply_transition({'state': 'rescheduled', 'reschedule_reason': reason.strip()})
         return replacement
+
+    def _apply_transition(self, vals):
+        return super(SalesVisit, self).write(vals)
 
     def unlink(self):
         if any(v.state != 'draft' for v in self):
