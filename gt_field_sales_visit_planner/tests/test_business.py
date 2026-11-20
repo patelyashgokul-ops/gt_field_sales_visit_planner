@@ -163,6 +163,28 @@ class TestVisitBusiness(FieldSalesCase):
         with self.assertRaises(AccessError):
             visit.with_user(self.unauthorized).read(['meeting_summary'])
 
+    def test_followup_overdue_and_removed_are_not_misreported_as_completed(self):
+        visit = self.make_visit()
+        visit.with_user(self.salesperson_a).write({
+            'outcome_id': self.outcome.id, 'meeting_summary': 'Reviewed requirements.',
+            'followup_required': True, 'next_followup_date': fields.Date.today() + timedelta(days=1),
+            'next_followup_user_id': self.salesperson_a.id, 'next_followup_summary': 'Send proposal',
+        })
+        visit.with_user(self.salesperson_a).action_complete_visit()
+        activity = visit.followup_activity_id
+        self.assertEqual(visit.followup_status, 'scheduled')
+        # Simulate the passage of time past the due date without sleeping.
+        self.env.cr.execute('UPDATE mail_activity SET date_deadline=%s WHERE id=%s',
+                            [fields.Date.today() - timedelta(days=1), activity.id])
+        activity.invalidate_recordset(['date_deadline'])
+        visit.invalidate_recordset(['followup_status'])
+        self.assertEqual(visit.followup_status, 'overdue')
+        # An archived/cancelled task is not evidence that the obligation was completed.
+        activity.with_user(self.manager).write({'active': False})
+        visit.invalidate_recordset(['followup_status'])
+        self.assertEqual(visit.followup_status, 'cancelled')
+        self.assertFalse(visit.followup_completed_at)
+
     def test_manager_correction_and_standard_activity_done_history(self):
         visit = self.make_visit()
         visit.with_user(self.salesperson_a).write({
