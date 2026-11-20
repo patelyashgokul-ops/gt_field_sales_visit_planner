@@ -7,6 +7,7 @@ from uuid import uuid4
 from odoo import Command, api, fields
 from odoo.exceptions import UserError
 from odoo.tests import TransactionCase, tagged
+from psycopg2.errors import UniqueViolation
 
 
 @tagged('post_install', '-at_install')
@@ -83,6 +84,7 @@ class TestExecutionConcurrency(TransactionCase):
                        [self.visit_ids])
             cr.execute('DELETE FROM gt_sales_visit_execution_request WHERE visit_id = ANY(%s)', [self.visit_ids])
             cr.execute('DELETE FROM gt_sales_visit_location_exception WHERE visit_id = ANY(%s)', [self.visit_ids])
+            cr.execute('DELETE FROM mail_activity WHERE gt_source_visit_id = ANY(%s)', [self.visit_ids])
             cr.execute('DELETE FROM gt_sales_visit_event WHERE visit_id = ANY(%s)', [self.visit_ids])
             cr.commit()
 
@@ -210,5 +212,38 @@ class TestExecutionConcurrency(TransactionCase):
             (self.sales_id, visit_id, 'action_reschedule', None),
         ])
         self.assertEqual(sorted(status for status, _ in outcomes), ['ok', 'rejected'])
+
+    def test_concurrent_followup_source_unique_index(self):
+        """Independent transactions cannot attach two obligations to one visit."""
+        visit_id = self.visit_ids[0]
+        model_id = self.env['ir.model']._get_id('gt.sales.visit')
+        todo_id = self.env.ref('mail.mail_activity_data_todo').id
+        admin_id = self.env.ref('base.user_admin').id
+        ready = threading.Barrier(2)
+
+        def insert_activity():
+            ready.wait(timeout=10)
+            with self.registry.cursor() as cr:
+                try:
+                    cr.execute(
+                        'INSERT INTO mail_activity '
+                        '(res_model_id, res_model, res_id, activity_type_id, user_id, summary, '
+                        'date_deadline, gt_source_visit_id, create_uid, write_uid, create_date, write_date) '
+                        'VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, %s, %s, NOW(), NOW())',
+                        [model_id, 'gt.sales.visit', visit_id, todo_id, self.sales_id,
+                         'Concurrent source obligation', visit_id, admin_id, admin_id],
+                    )
+                    cr.commit()
+                    return 'created'
+                except UniqueViolation:
+                    cr.rollback()
+                    return 'rejected'
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(insert_activity) for _ in range(2)]
+            self.assertEqual(sorted(f.result(timeout=20) for f in futures), ['created', 'rejected'])
+        with self.registry.cursor() as cr:
+            cr.execute('SELECT count(*) FROM mail_activity WHERE gt_source_visit_id=%s', [visit_id])
+            self.assertEqual(cr.fetchone()[0], 1)
 
 
