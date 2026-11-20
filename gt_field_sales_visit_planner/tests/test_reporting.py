@@ -132,7 +132,8 @@ class TestSalesReporting(FieldSalesCase):
 
     def test_spreadsheet_formula_neutralization(self):
         service = self.env['gt.sales.reporting']
-        for value in ('=1+1', '+cmd', '-1+1', '@SUM(A1:A2)', '\t=HYPERLINK("https://bad")'):
+        for value in ('=1+1', '+cmd', '-1+1', '@SUM(A1:A2)', '\t=HYPERLINK("https://bad")',
+                      '\r=1+1', '\n+1+1', ' \t@SUM(A1:A2)', '\ufeff=1+1', '\x00-1+1'):
             self.assertTrue(service.spreadsheet_safe_text(value).startswith("'"))
         self.assertEqual(service.spreadsheet_safe_text('Normal, "quoted"\ntext'), 'Normal, "quoted"\ntext')
 
