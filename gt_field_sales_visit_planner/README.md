@@ -1,29 +1,33 @@
-# Field Sales Visit Planner (P01 foundation)
+# Field Sales Visit Planner
 
 Publisher: Golok Technology  
 Support: patelyash.gokul@gmail.com  
 License: OPL-1
 
-This Odoo 20 Community addon provides company scoped sales territories,
-salesperson assignments, and customer territory allocations. It does not yet
-provide visit execution workflows.
+This Odoo 20 Community addon provides company-scoped territory configuration,
+salesperson assignments, customer allocations, daily visit planning, GPS-assisted
+visit execution, structured meeting outcomes, CRM linkage, Odoo follow-up
+activities, and management reporting.
 
 ## Setup
 
-Grant one of the Field Sales Access roles to each internal user. Sales Managers
-and Field Sales Administrators can configure records in their active allowed
-companies. Field Salespersons can read their own assignments and the associated
-territories and allocations. Use the company switcher when managing more than
-one authorized company.
+Install `base`, `contacts`, `mail`, and `crm`, and install the Python package
+`XlsxWriter` in the same environment as Odoo for XLSX exports. Assign a Field
+Sales role to each internal user and restrict allowed companies to the user's
+actual responsibilities. See `docs/customer/` for installation, administrator,
+salesperson, manager, privacy, troubleshooting, and release guidance.
 
-To move a customer to another territory, archive its current allocation and
-create a new one. The prior allocation stays in the database, and changes are
-tracked in the allocation chatter. Assignments also remain as historical
-records when archived. Territories with dependent records can be archived but
-cannot be deleted or moved to another company.
+Browser GPS is collected only after a user initiates a visit action. Device
+coordinates are not cryptographic proof of presence. An approved location
+exception does not mean GPS was within the configured radius. Customers are
+responsible for employee notices, lawful basis where applicable, and retention
+policies.
+
+The module declares OPL-1. Odoo Apps vendor guidance lists OPL-1 as compatible
+with OSI-approved licenses; XlsxWriter is BSD-2-Clause. The dependency is not
+bundled. Review current upstream terms and notices before redistribution.
 
 ## Development
 
-Discoverable Odoo tests live in `tests/`. Local test configuration and logs
-live in `.test/`. The module depends only on Community addons `base`,
-`contacts`, and `mail`.
+Discoverable Odoo tests live in `tests/`. Local test configuration, QA evidence,
+and release artifacts live in `.test/`. Do not ship `.test/` in the customer ZIP.

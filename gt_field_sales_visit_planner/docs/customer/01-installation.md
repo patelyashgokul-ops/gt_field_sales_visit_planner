@@ -13,7 +13,7 @@ This addon targets Odoo 20.0 Community. It depends on the Community modules `bas
 5. Assign Field Sales roles to internal users and select their allowed companies.
 6. Follow the Administrator Guide before scheduling live visits.
 
-This addon does not provide a native Android/iOS application or offline synchronization. Browser GPS requires a supported browser and a secure context (normally HTTPS, except browser localhost development contexts).
+This addon does not provide a native Android/iOS application or offline synchronization. Browser GPS requires a supported browser and a secure context (normally HTTPS, except browser localhost development contexts). Odoo Apps vendor guidance lists BSD-2-Clause as an OSI-approved dependency license compatible with OPL-1; XlsxWriter is not bundled with this addon.
 
 ## Common installation issues
 

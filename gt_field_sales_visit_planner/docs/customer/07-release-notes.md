@@ -8,7 +8,7 @@ Field Sales Visit Planner includes company-scoped territory setup, salesperson a
 - No native Android/iOS application, offline synchronization, or continuous location tracking is included.
 - Historical coverage uses the allocation history semantics implemented by the module; it is not a reconstructed effective-dated snapshot unless the source allocation model provides one.
 - Performance verification is environment- and dataset-specific; it is not a capacity guarantee.
-- Commercial redistribution remains subject to confirming OPL-1 compatibility with declared dependencies, including XlsxWriter.
+- XlsxWriter 3.1.9 is declared as an external BSD-2-Clause dependency and is not bundled. Odoo Apps vendor guidance lists OSI-approved licenses as compatible with OPL-1; confirm current terms and required notices before redistribution.
 
 Publisher: Golok Technology  
 Support: patelyash.gokul@gmail.com  
