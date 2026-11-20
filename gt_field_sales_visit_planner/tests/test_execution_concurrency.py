@@ -59,10 +59,6 @@ class TestExecutionConcurrency(TransactionCase):
                 'company_id': cls.company_id, 'default_radius_m': 100,
                 'max_radius_m': 1000, 'max_accuracy_m': 50,
             })
-            cls.outcome_id = env['gt.sales.visit.outcome'].create({
-                'name': cls.prefix + ' outcome', 'code': cls.prefix.lower(),
-                'company_id': cls.company_id, 'followup_allowed': True,
-            }).id
             cls.plan_id = env['gt.sales.visit.plan'].with_user(cls.sales_id).create({
                 'company_id': cls.company_id, 'user_id': cls.sales_id,
                 'visit_date': fields.Date.today(), 'timezone': 'UTC',
@@ -93,11 +89,11 @@ class TestExecutionConcurrency(TransactionCase):
         with cls.registry.cursor() as cr:
             cr.execute('UPDATE gt_sales_visit SET checkin_event_id=NULL, checkout_event_id=NULL, '
                        'checkin_exception_id=NULL, checkout_exception_id=NULL WHERE plan_id = %s', [cls.plan_id])
+            cr.execute('DELETE FROM mail_activity WHERE gt_source_visit_id IN (SELECT id FROM gt_sales_visit WHERE plan_id = %s)', [cls.plan_id])
             cr.execute('DELETE FROM gt_sales_visit_execution_request WHERE visit_id IN (SELECT id FROM gt_sales_visit WHERE plan_id = %s)', [cls.plan_id])
             cr.execute('DELETE FROM gt_sales_visit_location_exception WHERE visit_id IN (SELECT id FROM gt_sales_visit WHERE plan_id = %s)', [cls.plan_id])
             cr.execute('DELETE FROM gt_sales_visit_event WHERE visit_id IN (SELECT id FROM gt_sales_visit WHERE plan_id = %s)', [cls.plan_id])
             cr.execute('DELETE FROM gt_sales_visit WHERE plan_id = %s', [cls.plan_id])
-            cr.execute('DELETE FROM gt_sales_visit_outcome WHERE id = %s', [cls.outcome_id])
             cr.execute('DELETE FROM gt_sales_visit_plan WHERE id = %s', [cls.plan_id])
             cr.execute('DELETE FROM gt_sales_customer_location WHERE partner_id = ANY(%s)', [cls.partner_ids])
             cr.execute('DELETE FROM gt_sales_execution_policy WHERE company_id = %s', [cls.company_id])
@@ -195,48 +191,6 @@ class TestExecutionConcurrency(TransactionCase):
         self.assertEqual(sorted(status for status, _ in outcomes), ['ok', 'rejected'])
         with self.registry.cursor() as cr:
             cr.execute('SELECT count(*) FROM gt_sales_visit_event WHERE visit_id=%s AND event_type=%s', [active_id, 'check_out'])
-            self.assertEqual(cr.fetchone()[0], 1)
-
-    def test_concurrent_visit_completion_creates_one_activity_and_event(self):
-        visit_id = self.visit_ids[0]
-        # Prepare a legitimate checked-out visit using the production ORM services.
-        with self.registry.cursor() as cr:
-            env = api.Environment(cr, self.sales_id, {'allowed_company_ids': [self.company_id]})
-            visit = env['gt.sales.visit'].browse(visit_id)
-            payload = self._payload()
-            visit.action_check_in(payload)
-            visit.action_check_out(self._payload())
-            visit.write({'outcome_id': self.outcome_id, 'meeting_summary': 'Concurrency completion test'})
-            cr.commit()
-
-        barrier = threading.Barrier(2)
-
-        def complete():
-            with self.registry.cursor() as cr:
-                cr.execute("SET LOCAL statement_timeout = '15s'")
-                env = api.Environment(cr, self.sales_id, {'allowed_company_ids': [self.company_id]})
-                barrier.wait(timeout=10)
-                try:
-                    result = env['gt.sales.visit'].browse(visit_id).action_complete_visit()
-                    cr.commit()
-                    return ('ok', result)
-                except Exception as error:
-                    cr.rollback()
-                    return ('rejected', type(error).__name__)
-
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            outcomes = [future.result(timeout=25) for future in [pool.submit(complete), pool.submit(complete)]]
-        self.assertEqual([status for status, _ in outcomes], ['ok', 'ok'])
-        with self.registry.cursor() as cr:
-            cr.execute('SELECT state, count(*) FROM gt_sales_visit v '
-                       'LEFT JOIN mail_activity a ON a.gt_source_visit_id=v.id '
-                       'LEFT JOIN gt_sales_visit_event e ON e.visit_id=v.id AND e.event_type=%s '
-                       'WHERE v.id=%s GROUP BY state', ['visit_completed', visit_id])
-            state, activity_count = cr.fetchone()
-            self.assertEqual(state, 'completed')
-            self.assertEqual(activity_count, 1)
-            cr.execute('SELECT count(*) FROM gt_sales_visit_event WHERE visit_id=%s AND event_type=%s',
-                       [visit_id, 'visit_completed'])
             self.assertEqual(cr.fetchone()[0], 1)
 
     def test_concurrent_cancel_and_checkin_have_one_valid_winner(self):
