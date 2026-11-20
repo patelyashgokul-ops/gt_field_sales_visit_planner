@@ -87,6 +87,13 @@ class SalesReporting(models.AbstractModel):
         return domain
 
     @api.model
+    def _format_local_datetime(self, value, timezone):
+        if not value:
+            return ''
+        local_value = fields.Datetime.context_timestamp(self.with_context(tz=timezone), value)
+        return local_value.strftime('%Y-%m-%d %H:%M:%S %Z')
+
+    @api.model
     def _completed_domain(self, f):
         return self._scope_domain(f) + [
             ('state', '=', 'completed'), ('completed_at', '!=', False),
@@ -144,7 +151,7 @@ class SalesReporting(models.AbstractModel):
                 'customers_not_visited': not_visited,
                 'coverage_percent': round(visited * 100.0 / allocated, 1) if allocated else None,
                 'completed_visits': completed, 'repeat_visits': max(completed - visited, 0),
-                'last_completed_at': fields.Datetime.to_string(last_visit) if last_visit else '',
+                'last_completed_at': self._format_local_datetime(last_visit, f['timezone']),
                 'coverage_basis': 'Current Allocation Coverage',
             })
         return result
@@ -295,8 +302,8 @@ class SalesReporting(models.AbstractModel):
         )
         return [{'partner_id': partner.id, 'customer': partner.display_name,
                  'territory_id': territory.id, 'territory': territory.display_name,
-                 'completed_visits': count, 'last_completed_at': fields.Datetime.to_string(last) if last else '',
-                 'first_completed_at': fields.Datetime.to_string(first) if first else ''}
+                 'completed_visits': count, 'last_completed_at': self._format_local_datetime(last, f['timezone']),
+                 'first_completed_at': self._format_local_datetime(first, f['timezone'])}
                 for partner, territory, count, first, last in grouped]
 
     @api.model

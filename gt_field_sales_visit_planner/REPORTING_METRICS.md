@@ -22,7 +22,7 @@ Coverage is **Current Allocation Coverage** because P01 allocations do not have 
 
 ## Follow-ups
 
-Follow-up metrics are source-linked to a visit and use standard `mail.activity` plus P04's visit completion evidence. Open means active source-linked activity. Due today and overdue compare `date_deadline` to selected-company local reporting date. Completed requires P04's server evidence (`followup_completed_at`). An archived/deleted activity without that evidence is not counted completed. Follow-up report rows use activity due dates in the selected date range; dashboard follow-up counts use the selected planned-visit cohort.
+Follow-up metrics and report rows use the selected scheduled-visit cohort through the source visit, not the activity due-date range. Open means active source-linked activity. Due today and overdue compare `date_deadline` to selected-company local reporting date. Completed requires P04's server evidence (`followup_completed_at`). An archived/deleted activity without that evidence is not counted completed. This allows overdue obligations due before the selected range to remain visible when their source visits belong to the selected cohort.
 
 ## Location and outcome
 
