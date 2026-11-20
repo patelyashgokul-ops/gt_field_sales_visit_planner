@@ -7,11 +7,11 @@
         <button class="btn btn-primary" t-on-click="reload" t-att-disabled="state.loading"><i class="fa fa-refresh me-1"/> Refresh</button>
       </div>
       <div class="o_gt_filterbar">
-        <label>Company<select class="form-select" t-model="state.filters.company_id" t-on-change="onFilterChange"><option t-foreach="state.data?.companies || []" t-as="company" t-key="company.id" t-att-value="company.id"><t t-esc="company.name"/></option></select></label>
-        <label>Scheduled From<input type="date" class="form-control" t-model="state.filters.date_from" t-on-change="onFilterChange"/></label>
-        <label>Scheduled To<input type="date" class="form-control" t-model="state.filters.date_to" t-on-change="onFilterChange"/></label>
-        <label>Territory<select class="form-select" t-model="state.filters.territory_id" t-on-change="onFilterChange"><option value="">All authorized territories</option><option t-foreach="state.data?.territories || []" t-as="territory" t-key="territory.id" t-att-value="territory.id"><t t-esc="territory.name"/></option></select></label>
-        <label t-if="state.data?.salespeople.length &gt; 1">Salesperson<select class="form-select" t-model="state.filters.user_id" t-on-change="onFilterChange"><option value="">All authorized salespeople</option><option t-foreach="state.data?.salespeople || []" t-as="salesperson" t-key="salesperson.id" t-att-value="salesperson.id"><t t-esc="salesperson.name"/></option></select></label>
+        <label>Company<select class="form-select" t-att-value="state.filters.company_id" t-on-change="onCompanyChange"><option t-foreach="state.data?.companies || []" t-as="company" t-key="company.id" t-att-value="company.id"><t t-esc="company.name"/></option></select></label>
+        <label>Scheduled From<input type="date" class="form-control" t-att-value="state.filters.date_from" t-on-change="onDateFromChange"/></label>
+        <label>Scheduled To<input type="date" class="form-control" t-att-value="state.filters.date_to" t-on-change="onDateToChange"/></label>
+        <label>Territory<select class="form-select" t-att-value="state.filters.territory_id" t-on-change="onTerritoryChange"><option value="">All authorized territories</option><option t-foreach="state.data?.territories || []" t-as="territory" t-key="territory.id" t-att-value="territory.id"><t t-esc="territory.name"/></option></select></label>
+        <label t-if="state.data?.salespeople.length &gt; 1">Salesperson<select class="form-select" t-att-value="state.filters.user_id" t-on-change="onSalespersonChange"><option value="">All authorized salespeople</option><option t-foreach="state.data?.salespeople || []" t-as="salesperson" t-key="salesperson.id" t-att-value="salesperson.id"><t t-esc="salesperson.name"/></option></select></label>
       </div>
       <div t-if="state.error" class="alert alert-danger" role="alert"><t t-esc="state.error"/></div>
       <div t-if="state.loading" class="o_gt_loading" role="status">Loading authorized reporting data…</div>

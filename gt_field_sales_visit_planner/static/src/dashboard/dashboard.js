@@ -1,6 +1,6 @@
 ﻿/** @odoo-module **/
 
-import { Component, onWillStart, useState } from "@odoo/owl";
+import { Component, onWillStart, signalObject } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 
@@ -20,12 +20,13 @@ export class FieldSalesDashboard extends Component {
         this.orm = useService("orm");
         this.action = useService("action");
         this.notification = useService("notification");
-        this.state = useState({ loading: true, error: "", data: null, report: "overview", rows: [], reportLoading: false,
+        this._state = signalObject({ loading: true, error: "", data: null, report: "overview", rows: [], reportLoading: false,
             filters: { company_id: "", date_from: "", date_to: "", territory_id: "", user_id: "" } });
         onWillStart(() => this.reload());
     }
 
     get reportOptions() { return REPORTS; }
+    get state() { return this._state.value; }
     get reportColumns() { return REPORTS[this.state.report]?.columns || []; }
     get maxTrend() { return Math.max(1, ...(this.state.data?.trends || []).map((x) => x.planned)); }
 
@@ -64,6 +65,12 @@ export class FieldSalesDashboard extends Component {
         }
         await this.reload();
     }
+
+    onCompanyChange(ev) { this.state.filters.company_id = ev.target.value; return this.onFilterChange(); }
+    onDateFromChange(ev) { this.state.filters.date_from = ev.target.value; return this.onFilterChange(); }
+    onDateToChange(ev) { this.state.filters.date_to = ev.target.value; return this.onFilterChange(); }
+    onTerritoryChange(ev) { this.state.filters.territory_id = ev.target.value; return this.onFilterChange(); }
+    onSalespersonChange(ev) { this.state.filters.user_id = ev.target.value; return this.onFilterChange(); }
 
     async selectReport(report) {
         this.state.report = report;
