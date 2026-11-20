@@ -18,23 +18,24 @@ class TestExecutionConcurrency(TransactionCase):
         cls.company_id = cls.env.ref('base.main_company').id
         cls.prefix = 'P03-RACE-' + uuid4().hex[:10]
         with cls.registry.cursor() as cr:
-            env = api.Environment(cr, cls.env.ref('base.user_admin').id,
-                                  {'allowed_company_ids': [cls.company_id]})
-            category_user = env.ref('base.group_user')
-            salesperson_group = env.ref('gt_field_sales_visit_planner.group_field_salesperson')
-            manager_group = env.ref('gt_field_sales_visit_planner.group_sales_manager')
-            cls.sales_id = env['res.users'].create({
+            bootstrap = api.Environment(cr, cls.env.ref('base.user_admin').id,
+                                        {'allowed_company_ids': [cls.company_id]})
+            category_user = bootstrap.ref('base.group_user')
+            salesperson_group = bootstrap.ref('gt_field_sales_visit_planner.group_field_salesperson')
+            manager_group = bootstrap.ref('gt_field_sales_visit_planner.group_sales_manager')
+            cls.sales_id = bootstrap['res.users'].create({
                 'name': cls.prefix, 'login': cls.prefix.lower(),
                 'company_id': cls.company_id,
                 'company_ids': [Command.set([cls.company_id])],
                 'group_ids': [Command.set([category_user.id, salesperson_group.id])],
             }).id
-            cls.manager_id = env['res.users'].create({
+            cls.manager_id = bootstrap['res.users'].create({
                 'name': cls.prefix + ' manager', 'login': cls.prefix.lower() + '-manager',
                 'company_id': cls.company_id,
                 'company_ids': [Command.set([cls.company_id])],
                 'group_ids': [Command.set([category_user.id, manager_group.id])],
             }).id
+            env = api.Environment(cr, cls.manager_id, {'allowed_company_ids': [cls.company_id]})
             cls.territory_id = env['gt.sales.territory'].create({
                 'name': cls.prefix, 'code': cls.prefix, 'company_id': cls.company_id,
             }).id
@@ -42,7 +43,7 @@ class TestExecutionConcurrency(TransactionCase):
                 'territory_id': cls.territory_id, 'company_id': cls.company_id,
                 'user_id': cls.sales_id, 'date_from': '2020-01-01',
             })
-            cls.partner_ids = env['res.partner'].create([
+            cls.partner_ids = bootstrap['res.partner'].sudo().create([
                 {'name': cls.prefix + ' customer 1', 'company_id': cls.company_id},
                 {'name': cls.prefix + ' customer 2', 'company_id': cls.company_id},
             ]).ids

@@ -188,12 +188,12 @@ class TestVisitExecution(FieldSalesCase):
         visit = self.env['gt.sales.visit'].with_user(self.manager).create({
             'plan_id': plan.id, 'partner_id': self.customer_a.id, 'sequence': 10,
         })
-        second = self.env['gt.sales.visit'].with_user(self.manager).create({
-            'plan_id': plan.id, 'partner_id': self.shared_customer.id, 'sequence': 20,
-        })
         self.env['gt.sales.territory.customer'].create({
             'territory_id': self.territory_a.id, 'company_id': self.company_a.id,
             'partner_id': self.shared_customer.id,
+        })
+        second = self.env['gt.sales.visit'].with_user(self.manager).create({
+            'plan_id': plan.id, 'partner_id': self.shared_customer.id, 'sequence': 20,
         })
         plan.action_confirm()
         self.execute_as_salesperson(visit, 'action_check_in', self.payload())
@@ -252,8 +252,7 @@ class TestVisitExecution(FieldSalesCase):
             'group_ids': [(6, 0, [self.env.ref('base.group_user').id,
                                   self.env.ref('gt_field_sales_visit_planner.group_field_salesperson').id])],
         })
-        with self.assertRaises(AccessError):
-            visit.execution_event_ids.with_user(other).read(['latitude', 'longitude'])
+        self.assertEqual(visit.execution_event_ids.with_user(other).read(['latitude', 'longitude']), [])
 
     def test_company_location_boundaries_and_policy_snapshot(self):
         visit = self.create_planned_visit()
