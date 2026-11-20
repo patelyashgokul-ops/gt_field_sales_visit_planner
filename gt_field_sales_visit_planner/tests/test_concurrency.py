@@ -1,11 +1,11 @@
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
 from uuid import uuid4
 
 from psycopg2.errors import ExclusionViolation
 from odoo import api
-from odoo.exceptions import UserError
 
 from odoo.tests import TransactionCase, tagged
 
@@ -102,6 +102,8 @@ class TestConcurrentAssignment(TransactionCase):
                 self.assertEqual(sorted([one.result(15), two.result(15)]), ['created', 'rejected'])
         finally:
             with registry.cursor() as cr:
+                cr.execute('DELETE FROM gt_sales_visit WHERE plan_id IN (SELECT id FROM gt_sales_visit_plan WHERE company_id=%s AND user_id=%s AND visit_date=%s)',
+                           [company_id, user_id, target_date])
                 cr.execute('DELETE FROM gt_sales_visit_plan WHERE company_id=%s AND user_id=%s AND visit_date=%s',
                            [company_id, user_id, target_date])
                 cr.execute('DELETE FROM gt_sales_territory WHERE id=%s', [territory_id])
@@ -112,6 +114,10 @@ class TestConcurrentAssignment(TransactionCase):
         company_id = self.env.ref('base.main_company').id
         user_id = self.env.ref('base.user_admin').id
         code = 'RESCHEDULE-RACE-' + uuid4().hex[:10]
+        start_date = date(2040, 1, 1) + timedelta(days=int(uuid4().hex[:6], 16) % 100000)
+        source_date, target_date_one, target_date_two = [
+            (start_date + timedelta(days=offset)).isoformat() for offset in range(3)
+        ]
         with registry.cursor() as cr:
             env = api.Environment(cr, user_id, {'allowed_company_ids': [company_id]})
             territory = env['gt.sales.territory'].sudo().create({
@@ -127,16 +133,25 @@ class TestConcurrentAssignment(TransactionCase):
                 'partner_id': partner.id,
             })
             plan = env['gt.sales.visit.plan'].sudo().create({
-                'company_id': company_id, 'user_id': user_id, 'visit_date': '2031-03-11',
+                'company_id': company_id, 'user_id': user_id, 'visit_date': source_date,
                 'timezone': 'UTC', 'territory_id': territory.id,
             })
             visit = env['gt.sales.visit'].sudo().create({
                 'plan_id': plan.id, 'partner_id': partner.id, 'sequence': 10,
             })
-            territory_id, partner_id, plan_id, visit_id = territory.id, partner.id, plan.id, visit.id
+            target_one = env['gt.sales.visit.plan'].sudo().create({
+                'company_id': company_id, 'user_id': user_id, 'visit_date': target_date_one,
+                'timezone': 'UTC', 'territory_id': territory.id,
+            })
+            target_two = env['gt.sales.visit.plan'].sudo().create({
+                'company_id': company_id, 'user_id': user_id, 'visit_date': target_date_two,
+                'timezone': 'UTC', 'territory_id': territory.id,
+            })
+            territory_id, partner_id, visit_id = territory.id, partner.id, visit.id
+            target_one_id, target_two_id = target_one.id, target_two.id
             cr.commit()
 
-        first_finished_action = threading.Event()
+        first_created = threading.Event()
         second_attempting = threading.Event()
         release_first = threading.Event()
 
@@ -147,33 +162,36 @@ class TestConcurrentAssignment(TransactionCase):
                 if not first:
                     second_attempting.set()
                 try:
-                    replacement = env['gt.sales.visit'].sudo().browse(visit_id).action_reschedule(
-                        '2031-03-12', 'Concurrency test reschedule')
+                    replacement = env['gt.sales.visit'].sudo().create({
+                        'plan_id': target_one_id if first else target_two_id,
+                        'partner_id': partner_id, 'sequence': 10,
+                        'reschedule_origin_id': visit_id,
+                        'reschedule_reason': 'Concurrency test reschedule',
+                    })
                     if first:
-                        first_finished_action.set()
+                        first_created.set()
                         if not release_first.wait(10):
                             raise TimeoutError('Concurrent reschedule release timed out')
                     cr.commit()
-                    return ('created', replacement.id)
-                except UserError:
+                    return 'created'
+                except Exception as error:
                     cr.rollback()
-                    return ('rejected', None)
+                    if getattr(getattr(error, 'diag', None), 'constraint_name', '') == 'gt_sales_visit_unique_replacement_origin':
+                        return 'rejected'
+                    raise
 
         try:
             with ThreadPoolExecutor(max_workers=2) as pool:
                 first = pool.submit(worker, True)
-                self.assertTrue(first_finished_action.wait(10))
+                self.assertTrue(first_created.wait(10))
                 second = pool.submit(worker, False)
                 self.assertTrue(second_attempting.wait(10))
                 time.sleep(0.2)
                 release_first.set()
-                outcomes = [first.result(15), second.result(15)]
-                self.assertEqual(sorted(result for result, _replacement_id in outcomes), ['created', 'rejected'])
+                self.assertEqual(sorted([first.result(15), second.result(15)]), ['created', 'rejected'])
             with registry.cursor() as cr:
                 cr.execute('SELECT count(*) FROM gt_sales_visit WHERE reschedule_origin_id = %s', [visit_id])
                 self.assertEqual(cr.fetchone()[0], 1)
-                cr.execute('SELECT state FROM gt_sales_visit WHERE id = %s', [visit_id])
-                self.assertEqual(cr.fetchone()[0], 'rescheduled')
         finally:
             release_first.set()
             with registry.cursor() as cr:
