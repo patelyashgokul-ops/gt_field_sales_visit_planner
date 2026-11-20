@@ -53,6 +53,8 @@ class SalesTerritoryAssignment(models.Model):
             territory = self.env['gt.sales.territory'].browse(vals.get('territory_id'))
             if not territory.exists() or territory.company_id not in self.env.companies:
                 raise AccessError('You cannot assign a user to this territory.')
+            if not territory.active:
+                raise ValidationError('An archived territory cannot receive new assignments.')
             if vals.get('company_id') != territory.company_id.id:
                 raise ValidationError('The company must match the territory company.')
         records = super().create(vals_list)

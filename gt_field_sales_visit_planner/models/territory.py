@@ -1,5 +1,5 @@
 from odoo import api, fields, models
-from odoo.exceptions import ValidationError
+from odoo.exceptions import AccessError, ValidationError
 
 from .common import check_allowed_company
 
@@ -29,7 +29,6 @@ class SalesTerritory(models.Model):
         for vals in vals_list:
             company = self.env['res.company'].browse(vals.get('company_id') or self.env.company.id)
             if not company.exists() or company not in self.env.companies:
-                from odoo.exceptions import AccessError
                 raise AccessError('You cannot create a territory for this company.')
             for key in ('name', 'code'):
                 if not (vals.get(key) or '').strip():
@@ -41,13 +40,13 @@ class SalesTerritory(models.Model):
         for record in self:
             check_allowed_company(record)
             if 'company_id' in vals and vals['company_id'] != record.company_id.id and (
-                record.assignment_ids or record.customer_mapping_ids
+                record.with_context(active_test=False).assignment_ids
+                or record.with_context(active_test=False).customer_mapping_ids
             ):
                 raise ValidationError('A territory with assignments or allocations cannot change company.')
         if 'company_id' in vals:
             company = self.env['res.company'].browse(vals['company_id'])
             if not company.exists() or company not in self.env.companies:
-                from odoo.exceptions import AccessError
                 raise AccessError('You cannot move a territory to this company.')
         for key in ('name', 'code'):
             if key in vals:
@@ -59,6 +58,7 @@ class SalesTerritory(models.Model):
     def unlink(self):
         for record in self:
             check_allowed_company(record)
-            if record.assignment_ids or record.customer_mapping_ids:
+            if (record.with_context(active_test=False).assignment_ids
+                    or record.with_context(active_test=False).customer_mapping_ids):
                 raise ValidationError('Archive a territory with historical assignments or allocations.')
         return super().unlink()

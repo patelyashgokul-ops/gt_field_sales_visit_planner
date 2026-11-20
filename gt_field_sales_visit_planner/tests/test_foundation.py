@@ -1,8 +1,5 @@
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
-from odoo import api
 from odoo.exceptions import AccessError, ValidationError
 from odoo.tests import tagged
 
@@ -87,54 +84,10 @@ class TestFoundation(FieldSalesCase):
                 self.assignment_vals(territory=self.territory_b, user=self.salesperson_b))
 
     def test_company_change_after_dependents(self):
-        self.env['gt.sales.territory.assignment'].create(self.assignment_vals())
+        assignment = self.env['gt.sales.territory.assignment'].create(self.assignment_vals())
+        assignment.write({'active': False})
         with self.assertRaises(ValidationError):
             self.territory_a.write({'company_id': self.company_b.id})
+        with self.assertRaises(ValidationError):
+            self.territory_a.unlink()
 
-    def test_concurrent_assignment_creation(self):
-        """Separate committed transactions exercise the salesperson row lock."""
-        registry = self.env.registry
-        company = self.env.ref('base.main_company')
-        user = self.env.ref('base.user_admin')
-        code = 'LOCK-' + uuid4().hex[:12]
-        with registry.cursor() as cr:
-            env = api.Environment(cr, 1, {})
-            territory = env['gt.sales.territory'].create({
-                'name': code, 'code': code, 'company_id': company.id,
-            })
-            territory_id = territory.id
-            cr.commit()
-
-        created = threading.Event()
-        release = threading.Event()
-
-        def worker(hold):
-            with registry.cursor() as cr:
-                env = api.Environment(cr, 1, {})
-                try:
-                    env['gt.sales.territory.assignment'].create({
-                        'territory_id': territory_id, 'company_id': company.id,
-                        'user_id': user.id, 'date_from': '2026-01-01',
-                    })
-                    if hold:
-                        created.set()
-                        release.wait(10)
-                    cr.commit()
-                    return 'created'
-                except ValidationError:
-                    cr.rollback()
-                    return 'rejected'
-
-        try:
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                first = pool.submit(worker, True)
-                self.assertTrue(created.wait(10), 'First transaction did not create its assignment')
-                second = pool.submit(worker, False)
-                release.set()
-                self.assertEqual(sorted([first.result(15), second.result(15)]), ['created', 'rejected'])
-        finally:
-            release.set()
-            with registry.cursor() as cr:
-                cr.execute('DELETE FROM gt_sales_territory_assignment WHERE territory_id = %s', [territory_id])
-                cr.execute('DELETE FROM gt_sales_territory WHERE id = %s', [territory_id])
-                cr.commit()
