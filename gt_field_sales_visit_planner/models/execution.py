@@ -549,7 +549,12 @@ class SalesVisitExecution(models.Model):
             ('company_id', '=', self.company_id.id), ('territory_id', '=', self.territory_id.id),
             ('partner_id', '=', self.partner_id.id), ('active', '=', True),
         ], limit=1)
-        if not mapping:
+        if mapping:
+            self.env.cr.execute(
+                'SELECT id FROM gt_sales_territory_customer WHERE id = %s FOR SHARE', [mapping.id])
+            mapping.invalidate_recordset(['active', 'company_id', 'territory_id', 'partner_id'])
+        if (not mapping or not mapping.active or mapping.company_id != self.company_id
+                or mapping.territory_id != self.territory_id or mapping.partner_id != self.partner_id):
             raise UserError('The customer is no longer allocated to this visit territory.')
 
     def _validate_checkin_window(self, now, policy):

@@ -92,6 +92,14 @@ class SalesVisitPlan(models.Model):
         ], limit=1)
         if not assignment:
             raise ValidationError('The salesperson is not assigned to this territory on the plan date.')
+        self.env.cr.execute(
+            'SELECT id FROM gt_sales_territory_assignment WHERE id = %s FOR SHARE', [assignment.id])
+        assignment.invalidate_recordset(['active', 'company_id', 'territory_id', 'user_id', 'date_from', 'date_to'])
+        if (not assignment.active or assignment.company_id != territory.company_id
+                or assignment.territory_id != territory or assignment.user_id != user
+                or assignment.date_from > date
+                or (assignment.date_to and assignment.date_to < date)):
+            raise ValidationError('The salesperson is not assigned to this territory on the plan date.')
 
     def write(self, vals):
         self.check_access('write')
@@ -295,6 +303,10 @@ class SalesVisit(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         self.check_access('create')
+        plan_ids = sorted({vals.get('plan_id') for vals in vals_list if vals.get('plan_id')})
+        plans = self.env['gt.sales.visit.plan'].browse(plan_ids)
+        plans.check_access('write')
+        plans._lock_for_planning_transition()
         for vals in vals_list:
             plan = self.env['gt.sales.visit.plan'].browse(vals.get('plan_id'))
             if not plan.exists() or plan.state != 'draft':
@@ -328,7 +340,12 @@ class SalesVisit(models.Model):
                 ('territory_id', '=', plan.territory_id.id), ('partner_id', '=', visit.partner_id.id),
                 ('company_id', '=', plan.company_id.id), ('active', '=', True),
             ], limit=1)
-            if not mapping:
+            if mapping:
+                self.env.cr.execute(
+                    'SELECT id FROM gt_sales_territory_customer WHERE id = %s FOR SHARE', [mapping.id])
+                mapping.invalidate_recordset(['active', 'company_id', 'territory_id', 'partner_id'])
+            if (not mapping or not mapping.active or mapping.company_id != plan.company_id
+                    or mapping.territory_id != plan.territory_id or mapping.partner_id != visit.partner_id):
                 raise ValidationError('The customer must have an active allocation to the plan territory.')
             if visit.crm_lead_id:
                 visit.crm_lead_id.check_access('read')
@@ -363,6 +380,8 @@ class SalesVisit(models.Model):
     def write(self, vals):
         self.check_access('write')
         self._lock_for_planning_transition()
+        if 'plan_id' in vals and any(visit.plan_id.id != vals['plan_id'] for visit in self):
+            raise UserError('Move a visit to another plan through the reschedule workflow.')
         protected = {'plan_id', 'partner_id', 'sequence', 'planned_start_at', 'planned_end_at', 'crm_lead_id'}
         for visit in self:
             check_allowed_company(visit.plan_id)
@@ -427,8 +446,6 @@ class SalesVisit(models.Model):
             raise UserError('Only draft or planned visits can be rescheduled.')
         if not reason or not reason.strip():
             raise ValidationError('A reschedule reason is required.')
-        if target_plan and target_plan.state != 'draft':
-            raise UserError('Reschedule into a draft plan; confirmed plans cannot be amended here.')
         if not target_plan:
             target_plan = self.env['gt.sales.visit.plan'].create({
                 'company_id': self.company_id.id, 'user_id': self.user_id.id,
@@ -439,6 +456,10 @@ class SalesVisit(models.Model):
                 or target_plan.visit_date != fields.Date.to_date(target_date)
                 or target_plan.territory_id != self.territory_id):
             raise ValidationError('The target plan must match company, salesperson, territory, and date.')
+        target_plan.check_access('write')
+        target_plan._lock_for_planning_transition()
+        if target_plan.state != 'draft':
+            raise UserError('Reschedule into a draft plan; confirmed plans cannot be amended here.')
         if target_plan.visit_ids.filtered(lambda v: v.partner_id == self.partner_id and v.state in ('draft', 'planned')):
             raise ValidationError('The customer already has an active visit in the target plan.')
         sequence = max(target_plan.visit_ids.mapped('sequence') or [0]) + 10

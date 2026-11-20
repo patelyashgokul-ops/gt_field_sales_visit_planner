@@ -168,13 +168,13 @@ class SalesVisitBusiness(models.Model):
         business = {'outcome_id', 'meeting_summary', 'customer_feedback', 'customer_objection',
                     'product_interest_ids', 'followup_required', 'next_followup_date', 'next_followup_user_id',
                     'next_followup_summary', 'crm_lead_id'}
+        if business.intersection(vals):
+            self._lock_for_planning_transition()
+            self.invalidate_recordset(['state', 'company_id', 'partner_id', 'territory_id', 'user_id',
+                                       'outcome_id', 'meeting_summary', 'customer_feedback',
+                                       'customer_objection', 'followup_required', 'next_followup_date',
+                                       'next_followup_user_id', 'next_followup_summary', 'crm_lead_id'])
         for visit in self:
-            if business.intersection(vals):
-                visit._lock_for_planning_transition()
-                visit.invalidate_recordset(['state', 'company_id', 'partner_id', 'territory_id', 'user_id',
-                                            'outcome_id', 'meeting_summary', 'customer_feedback',
-                                            'customer_objection', 'followup_required', 'next_followup_date',
-                                            'next_followup_user_id', 'next_followup_summary', 'crm_lead_id'])
             visit._check_business_actor()
             if 'state' in vals:
                 raise AccessError('Use the explicit visit completion or missed action to change state.')

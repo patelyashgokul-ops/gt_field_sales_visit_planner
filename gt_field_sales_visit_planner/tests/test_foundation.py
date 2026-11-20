@@ -107,6 +107,12 @@ class TestFoundation(FieldSalesCase):
             'name': 'Field Portal', 'login': 'field_portal_' + uuid4().hex,
             'group_ids': [(6, 0, [self.env.ref('base.group_portal').id])],
         })
+        public = self.env.ref('base.public_user')
+        for user in (portal, public):
+            for model in ('gt.sales.territory', 'gt.sales.visit.plan', 'gt.sales.visit',
+                          'gt.sales.visit.event', 'gt.sales.visit.location.exception'):
+                with self.assertRaises(AccessError):
+                    self.env[model].with_user(user).check_access('read')
         with self.assertRaises(ValidationError):
             self.env['gt.sales.territory.assignment'].create(
                 self.assignment_vals(user=portal, date_from='2029-01-01'))
