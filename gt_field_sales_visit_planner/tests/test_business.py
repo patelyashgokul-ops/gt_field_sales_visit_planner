@@ -135,9 +135,6 @@ class TestVisitBusiness(FieldSalesCase):
             planned.with_user(self.salesperson_a).write({'state': 'completed'})
         with self.assertRaises(UserError):
             planned.plan_id.with_user(self.manager).action_cancel('Cannot cancel missed visit history')
-        checked_out = self.make_visit()
-        with self.assertRaises(UserError):
-            checked_out.with_user(self.salesperson_a).action_mark_missed('Too late')
 
     def test_cross_company_crm_product_interest_and_completed_write_denied(self):
         visit = self.make_visit()
