@@ -366,6 +366,15 @@ class SalesVisit(models.Model):
             'state': 'cancelled', 'cancellation_reason': reason.strip(),
         })
 
+    def action_open_cancel(self):
+        self.ensure_one()
+        check_allowed_company(self.plan_id)
+        self._check_plan_owner(self.plan_id)
+        if self.state not in ('draft', 'planned'):
+            raise UserError('Only draft or planned visits can be cancelled.')
+        return {'type': 'ir.actions.act_window', 'res_model': 'gt.sales.visit.cancel.wizard',
+                'view_mode': 'form', 'target': 'new', 'context': {'default_visit_id': self.id}}
+
     def action_open_reschedule(self):
         self.ensure_one()
         check_allowed_company(self.plan_id)

@@ -30,6 +30,20 @@ class PlanCancelWizard(models.TransientModel):
         return {'type': 'ir.actions.act_window_close'}
 
 
+class VisitCancelWizard(models.TransientModel):
+    _name = 'gt.sales.visit.cancel.wizard'
+    _description = 'Cancel Planned Customer Visit'
+    visit_id = fields.Many2one('gt.sales.visit', required=True)
+    reason = fields.Text(required=True)
+
+    def action_apply(self):
+        self.ensure_one()
+        if not self.reason or not self.reason.strip():
+            raise ValidationError('A cancellation reason is required.')
+        self.visit_id.action_cancel(self.reason)
+        return {'type': 'ir.actions.act_window_close'}
+
+
 class PlanAmendWizard(models.TransientModel):
     _name = 'gt.sales.plan.amend.wizard'
     _description = 'Amend Confirmed Visit Plan'
