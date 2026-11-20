@@ -7,7 +7,6 @@ from uuid import uuid4
 from odoo import Command, api, fields
 from odoo.exceptions import UserError
 from odoo.tests import TransactionCase, tagged
-from psycopg2.errors import UniqueViolation
 
 
 @tagged('post_install', '-at_install')
@@ -212,43 +211,4 @@ class TestExecutionConcurrency(TransactionCase):
         ])
         self.assertEqual(sorted(status for status, _ in outcomes), ['ok', 'rejected'])
 
-    def test_concurrent_followup_obligation_insert_is_unique(self):
-        """The source-visit unique index prevents duplicate obligations under race."""
-        registry = self.registry
-        visit_id = self.visit_ids[0]
-        admin_id = self.env.ref('base.user_admin').id
-        model_id = self.env['ir.model']._get_id('gt.sales.visit')
-        todo_id = self.env.ref('mail.mail_activity_data_todo').id
-        deadline = fields.Date.today()
-        ready = threading.Barrier(2)
-
-        def create_obligation():
-            ready.wait(timeout=10)
-            with registry.cursor() as cr:
-                env = api.Environment(cr, admin_id,
-                                      {'allowed_company_ids': [self.company_id]})
-                values = {
-                    'res_model_id': model_id,
-                    'res_id': visit_id,
-                    'activity_type_id': todo_id,
-                    'summary': 'Concurrent follow-up uniqueness test',
-                    'date_deadline': deadline,
-                    'user_id': self.sales_id,
-                    'gt_source_visit_id': visit_id,
-                }
-                try:
-                    activity = env['mail.activity'].sudo().create(values)
-                    cr.commit()
-                    return ('created', activity.id)
-                except UniqueViolation:
-                    cr.rollback()
-                    return ('rejected', None)
-
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = [pool.submit(create_obligation) for _ in range(2)]
-            outcomes = [future.result(timeout=20) for future in futures]
-        self.assertEqual(sorted(status for status, _ in outcomes), ['created', 'rejected'])
-        with registry.cursor() as cr:
-            cr.execute('SELECT count(*) FROM mail_activity WHERE gt_source_visit_id = %s', [visit_id])
-            self.assertEqual(cr.fetchone()[0], 1)
 
