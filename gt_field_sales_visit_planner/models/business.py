@@ -447,7 +447,13 @@ class MailActivityVisitFollowup(models.Model):
         return result
 
     def action_feedback(self, feedback=False, attachment_ids=None):
-        for activity in self.filtered('gt_source_visit_id'):
+        # `context` comes from the RPC payload and is user-controlled, so it must
+        # never serve as the authority for deleting a sourced activity.  Validate
+        # the normal user first, then let only this action's narrowly-scoped
+        # activity recordset run the standard deletion path with ORM elevation.
+        sourced = self.filtered('gt_source_visit_id')
+        ordinary = self - sourced
+        for activity in sourced:
             visit = activity.gt_source_visit_id
             visit._check_business_actor()
             visit._lock_for_planning_transition()
@@ -462,11 +468,20 @@ class MailActivityVisitFollowup(models.Model):
                 'policy_snapshot': {'activity_id': activity.id}, 'explanation': feedback or '',
             })
             models.Model.write(visit, {'followup_completed_at': completed_at})
-        return super(MailActivityVisitFollowup, self.with_context(gt_followup_done=True)).action_feedback(
-            feedback=feedback, attachment_ids=attachment_ids)
+        result = False
+        if ordinary:
+            result = super(MailActivityVisitFollowup, ordinary).action_feedback(
+                feedback=feedback, attachment_ids=attachment_ids)
+        if sourced:
+            # Odoo's standard action_feedback removes the completed activity. The
+            # unlink guard below allows that only in an elevated server call,
+            # after the caller and every linked visit were authorized above.
+            result = super(MailActivityVisitFollowup, sourced.sudo()).action_feedback(
+                feedback=feedback, attachment_ids=attachment_ids) or result
+        return result
 
     def unlink(self):
-        if self.filtered('gt_source_visit_id') and not self.env.context.get('gt_followup_done'):
+        if self.filtered('gt_source_visit_id') and not self.env.su:
             raise AccessError('Use the standard Mark Done action; source follow-up history cannot be deleted.')
         return super().unlink()
 
