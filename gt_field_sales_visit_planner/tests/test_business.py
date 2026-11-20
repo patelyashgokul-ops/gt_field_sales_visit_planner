@@ -185,6 +185,17 @@ class TestVisitBusiness(FieldSalesCase):
         self.assertEqual(visit.followup_status, 'cancelled')
         self.assertFalse(visit.followup_completed_at)
 
+    def test_import_cannot_forge_completed_timestamp(self):
+        visit = self.make_visit()
+        visit.with_user(self.salesperson_a).write({
+            'outcome_id': self.general.id, 'meeting_summary': 'Import protection test',
+        })
+        visit.with_user(self.salesperson_a).action_complete_visit()
+        with self.assertRaises(AccessError):
+            visit.with_user(self.salesperson_a).load(
+                ['completed_at'], [[fields.Datetime.to_string(fields.Datetime.now() + timedelta(days=1))]])
+        self.assertEqual(visit.completed_at, fields.Datetime.to_datetime(visit.completed_at))
+
     def test_manager_correction_and_standard_activity_done_history(self):
         visit = self.make_visit()
         self.salesperson_a.write({'group_ids': [(4, self.env.ref('sales_team.group_sale_salesman').id)]})
