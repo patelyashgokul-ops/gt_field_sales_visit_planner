@@ -13,6 +13,8 @@
         'views/territory_views.xml',
         'views/planning_views.xml',
         'views/execution_views.xml',
+        'data/visit_outcomes.xml',
+        'views/business_views.xml',
         'wizard/reschedule_visit_views.xml',
     ],
     'assets': {

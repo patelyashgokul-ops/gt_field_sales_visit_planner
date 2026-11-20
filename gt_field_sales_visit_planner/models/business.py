@@ -141,28 +141,34 @@ class SalesVisitBusiness(models.Model):
         for line in self.product_interest_ids:
             if line.company_id != self.company_id:
                 raise ValidationError('Product interest must belong to the visit company.')
-        if self.crm_lead_id:
-            self.crm_lead_id.check_access('read')
-            if self.crm_lead_id.company_id and self.crm_lead_id.company_id != self.company_id:
+        lead = self.env['crm.lead'].browse(values['crm_lead_id']) if 'crm_lead_id' in values else self.crm_lead_id
+        if lead:
+            lead.check_access('read')
+            if lead.company_id and lead.company_id != self.company_id:
                 raise ValidationError('The linked opportunity belongs to another company.')
-            if self.crm_lead_id.partner_id != self.partner_id:
+            if lead.partner_id != self.partner_id:
                 raise ValidationError('The opportunity customer must match this visit customer.')
 
     def write(self, vals):
-        protected = {'completed_at', 'completed_by', 'missed_at', 'missed_by', 'outcome_snapshot',
-                     'followup_activity_id'}
+        protected = {'completed_at', 'completed_by', 'missed_at', 'missed_by', 'missed_reason',
+                     'outcome_snapshot', 'followup_activity_id', 'followup_completed_at'}
         if protected.intersection(vals):
             raise AccessError('Completion and follow-up metadata can only be changed by visit actions.')
         business = {'outcome_id', 'meeting_summary', 'customer_feedback', 'customer_objection',
-                    'followup_required', 'next_followup_date', 'next_followup_user_id', 'next_followup_summary'}
+                    'product_interest_ids', 'followup_required', 'next_followup_date', 'next_followup_user_id',
+                    'next_followup_summary', 'crm_lead_id'}
         for visit in self:
             visit._check_business_actor()
+            if 'state' in vals:
+                raise AccessError('Use the explicit visit completion or missed action to change state.')
             if visit.state == 'completed' and business.intersection(vals):
                 raise AccessError('Completed business results require the manager correction action.')
             if visit.state not in ('checked_out_pending_outcome', 'completed') and business.intersection(vals):
                 raise UserError('Business results can be entered after checkout.')
             if business.intersection(vals):
                 visit._validate_business_values(vals)
+        if set(vals).issubset(business):
+            return models.Model.write(self, vals)
         return super().write(vals)
 
     def action_complete_visit(self):
@@ -365,8 +371,9 @@ class MailActivityVisitFollowup(models.Model):
         result = super().write(vals)
         for activity in sourced:
             visit = activity.gt_source_visit_id
-            event_type = 'followup_reassigned' if 'user_id' in vals else (
-                'followup_deadline_changed' if 'date_deadline' in vals else 'business_result_corrected')
+            event_type = 'followup_cancelled' if vals.get('active') is False else (
+                'followup_reassigned' if 'user_id' in vals else (
+                    'followup_deadline_changed' if 'date_deadline' in vals else 'business_result_corrected'))
             self.env['gt.sales.visit.event'].sudo().create({
                 'visit_id': visit.id, 'company_id': visit.company_id.id, 'actor_user_id': self.env.user.id,
                 'event_type': event_type, 'occurred_at': fields.Datetime.now(), 'location_status': 'not_required',
@@ -388,7 +395,8 @@ class MailActivityVisitFollowup(models.Model):
                 'policy_snapshot': {'activity_id': activity.id}, 'explanation': feedback or '',
             })
             models.Model.write(visit, {'followup_completed_at': completed_at})
-        return super().action_feedback(feedback=feedback, attachment_ids=attachment_ids)
+        return super(MailActivityVisitFollowup, self.with_context(gt_followup_done=True)).action_feedback(
+            feedback=feedback, attachment_ids=attachment_ids)
 
     def unlink(self):
         if self.filtered('gt_source_visit_id') and not self.env.context.get('gt_followup_done'):
