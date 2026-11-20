@@ -4,6 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 from psycopg2.errors import ExclusionViolation
+from odoo import api
+from odoo.exceptions import UserError
 
 from odoo.tests import TransactionCase, tagged
 
@@ -103,4 +105,82 @@ class TestConcurrentAssignment(TransactionCase):
                 cr.execute('DELETE FROM gt_sales_visit_plan WHERE company_id=%s AND user_id=%s AND visit_date=%s',
                            [company_id, user_id, target_date])
                 cr.execute('DELETE FROM gt_sales_territory WHERE id=%s', [territory_id])
+                cr.commit()
+
+    def test_concurrent_reschedule_of_same_visit_creates_one_replacement(self):
+        registry = self.env.registry
+        company_id = self.env.ref('base.main_company').id
+        user_id = self.env.ref('base.user_admin').id
+        code = 'RESCHEDULE-RACE-' + uuid4().hex[:10]
+        with registry.cursor() as cr:
+            env = api.Environment(cr, user_id, {'allowed_company_ids': [company_id]}).sudo()
+            territory = env['gt.sales.territory'].create({
+                'name': code, 'code': code, 'company_id': company_id,
+            })
+            assignment = env['gt.sales.territory.assignment'].create({
+                'territory_id': territory.id, 'company_id': company_id,
+                'user_id': user_id, 'date_from': '2031-01-01',
+            })
+            partner = env['res.partner'].create({'name': code})
+            mapping = env['gt.sales.territory.customer'].create({
+                'territory_id': territory.id, 'company_id': company_id,
+                'partner_id': partner.id,
+            })
+            plan = env['gt.sales.visit.plan'].create({
+                'company_id': company_id, 'user_id': user_id, 'visit_date': '2031-03-11',
+                'timezone': 'UTC', 'territory_id': territory.id,
+            })
+            visit = env['gt.sales.visit'].create({
+                'plan_id': plan.id, 'partner_id': partner.id, 'sequence': 10,
+            })
+            territory_id, partner_id, plan_id, visit_id = territory.id, partner.id, plan.id, visit.id
+            cr.commit()
+
+        first_finished_action = threading.Event()
+        second_attempting = threading.Event()
+        release_first = threading.Event()
+
+        def worker(first):
+            with registry.cursor() as cr:
+                env = api.Environment(cr, user_id, {'allowed_company_ids': [company_id]}).sudo()
+                cr.execute("SET LOCAL lock_timeout = '10s'")
+                if not first:
+                    second_attempting.set()
+                try:
+                    replacement = env['gt.sales.visit'].browse(visit_id).action_reschedule(
+                        '2031-03-12', 'Concurrency test reschedule')
+                    if first:
+                        first_finished_action.set()
+                        if not release_first.wait(10):
+                            raise TimeoutError('Concurrent reschedule release timed out')
+                    cr.commit()
+                    return ('created', replacement.id)
+                except UserError:
+                    cr.rollback()
+                    return ('rejected', None)
+
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(worker, True)
+                self.assertTrue(first_finished_action.wait(10))
+                second = pool.submit(worker, False)
+                self.assertTrue(second_attempting.wait(10))
+                time.sleep(0.2)
+                release_first.set()
+                outcomes = [first.result(15), second.result(15)]
+                self.assertEqual(sorted(result for result, _replacement_id in outcomes), ['created', 'rejected'])
+            with registry.cursor() as cr:
+                cr.execute('SELECT count(*) FROM gt_sales_visit WHERE reschedule_origin_id = %s', [visit_id])
+                self.assertEqual(cr.fetchone()[0], 1)
+                cr.execute('SELECT state FROM gt_sales_visit WHERE id = %s', [visit_id])
+                self.assertEqual(cr.fetchone()[0], 'rescheduled')
+        finally:
+            release_first.set()
+            with registry.cursor() as cr:
+                cr.execute('DELETE FROM gt_sales_visit WHERE plan_id IN (SELECT id FROM gt_sales_visit_plan WHERE territory_id = %s)', [territory_id])
+                cr.execute('DELETE FROM gt_sales_visit_plan WHERE territory_id = %s', [territory_id])
+                cr.execute('DELETE FROM gt_sales_territory_customer WHERE territory_id = %s', [territory_id])
+                cr.execute('DELETE FROM gt_sales_territory_assignment WHERE territory_id = %s', [territory_id])
+                cr.execute('DELETE FROM gt_sales_territory WHERE id = %s', [territory_id])
+                cr.execute('DELETE FROM res_partner WHERE id = %s', [partner_id])
                 cr.commit()

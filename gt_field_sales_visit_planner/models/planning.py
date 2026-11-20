@@ -358,6 +358,7 @@ class SalesVisit(models.Model):
         if not reason or not reason.strip():
             raise ValidationError('A cancellation reason is required.')
         for visit in self:
+            visit._lock_for_planning_transition()
             check_allowed_company(visit.plan_id)
             self._check_plan_owner(visit.plan_id)
             if visit.state not in ('draft', 'planned'):
@@ -365,6 +366,11 @@ class SalesVisit(models.Model):
         return self._apply_transition({
             'state': 'cancelled', 'cancellation_reason': reason.strip(),
         })
+
+    def _lock_for_planning_transition(self):
+        """Serialize reschedule/cancel decisions for a visit across transactions."""
+        self.env.cr.execute('SELECT id FROM gt_sales_visit WHERE id = %s FOR UPDATE', [self.id])
+        self.invalidate_recordset(['state', 'plan_id', 'partner_id', 'reschedule_origin_id'])
 
     def action_open_cancel(self):
         self.ensure_one()
@@ -386,6 +392,7 @@ class SalesVisit(models.Model):
 
     def action_reschedule(self, target_date, reason, target_plan=None):
         self.ensure_one()
+        self._lock_for_planning_transition()
         check_allowed_company(self.plan_id)
         self._check_plan_owner(self.plan_id)
         if self.state not in ('draft', 'planned'):
