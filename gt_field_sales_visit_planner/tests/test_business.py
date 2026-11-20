@@ -133,7 +133,8 @@ class TestVisitBusiness(FieldSalesCase):
             ('visit_id', '=', planned.id), ('event_type', '=', 'visit_missed')]), 1)
         with self.assertRaises(AccessError):
             planned.with_user(self.salesperson_a).write({'state': 'completed'})
-        planned.plan_id.with_user(self.manager).action_cancel('Test cleanup after missed visit')
+        with self.assertRaises(UserError):
+            planned.plan_id.with_user(self.manager).action_cancel('Cannot cancel missed visit history')
         checked_out = self.make_visit()
         with self.assertRaises(UserError):
             checked_out.with_user(self.salesperson_a).action_mark_missed('Too late')

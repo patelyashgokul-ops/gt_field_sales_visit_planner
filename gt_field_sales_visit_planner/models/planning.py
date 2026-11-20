@@ -86,6 +86,7 @@ class SalesVisitPlan(models.Model):
             raise ValidationError('Choose a valid IANA timezone.')
 
     def _check_user_territory(self, user, territory, date):
+        date = fields.Date.to_date(date)
         assignment = self.env['gt.sales.territory.assignment'].with_context(active_test=False).search([
             ('territory_id', '=', territory.id), ('user_id', '=', user.id), ('company_id', '=', territory.company_id.id),
             ('active', '=', True), ('date_from', '<=', date), '|', ('date_to', '=', False), ('date_to', '>=', date),
