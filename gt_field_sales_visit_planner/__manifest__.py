@@ -6,6 +6,7 @@
     'author': 'Golok Technology',
     'license': 'OPL-1',
     'depends': ['base', 'contacts', 'mail'],
+    'pre_init_hook': 'pre_init_hook',
     'data': [
         'security/security.xml',
         'security/ir.access.csv',

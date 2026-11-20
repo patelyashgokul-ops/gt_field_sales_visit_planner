@@ -21,6 +21,11 @@ class SalesTerritoryAssignment(models.Model):
 
     _valid_dates = models.Constraint('CHECK(date_to IS NULL OR date_to >= date_from)',
                                       'The end date must not precede the start date.')
+    _no_overlapping_active_dates = models.Constraint(
+        "EXCLUDE USING gist (territory_id WITH =, user_id WITH =, "
+        "daterange(date_from, date_to, '[]') WITH &&) WHERE (active)",
+        'This salesperson already has an overlapping active assignment.',
+    )
 
     def _validate_business(self):
         for record in self:
@@ -47,9 +52,6 @@ class SalesTerritoryAssignment(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         self.check_access('create')
-        user_ids = [vals.get('user_id') for vals in vals_list if vals.get('user_id')]
-        if user_ids:
-            self.env.cr.execute('SELECT id FROM res_users WHERE id = ANY(%s) ORDER BY id FOR UPDATE', [user_ids])
         for vals in vals_list:
             territory = self.env['gt.sales.territory'].browse(vals.get('territory_id'))
             if not territory.exists() or territory.company_id not in self.env.companies:
@@ -65,9 +67,6 @@ class SalesTerritoryAssignment(models.Model):
     def write(self, vals):
         for record in self:
             check_allowed_company(record)
-        user_ids = sorted(set(self.mapped('user_id').ids + ([vals['user_id']] if vals.get('user_id') else [])))
-        if user_ids:
-            self.env.cr.execute('SELECT id FROM res_users WHERE id = ANY(%s) ORDER BY id FOR UPDATE', [user_ids])
         result = super().write(vals)
         self._validate_business()
         return result
