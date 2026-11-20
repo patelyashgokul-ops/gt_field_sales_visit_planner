@@ -2,6 +2,7 @@
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from uuid import uuid4
 
 from odoo import Command, api, fields
@@ -244,6 +245,62 @@ class TestExecutionConcurrency(TransactionCase):
             self.assertEqual(sorted(f.result(timeout=20) for f in futures), ['created', 'rejected'])
         with self.registry.cursor() as cr:
             cr.execute('SELECT count(*) FROM mail_activity WHERE gt_source_visit_id=%s', [visit_id])
+            self.assertEqual(cr.fetchone()[0], 1)
+
+    def test_concurrent_completion_creates_one_followup(self):
+        """The real completion service and source index tolerate simultaneous retries."""
+        visit_id = self.visit_ids[0]
+        manager_env = self.env['gt.sales.visit.outcome'].with_context(
+            allowed_company_ids=[self.company_id]).sudo()
+        outcome = manager_env.create({
+            'name': 'Concurrent Follow-up ' + uuid4().hex[:8],
+            'code': 'CONCURRENT-' + uuid4().hex[:10],
+            'company_id': self.company_id,
+            'requires_followup': True,
+            'followup_allowed': True,
+        })
+        visit = self.env['gt.sales.visit'].browse(visit_id).with_user(self.sales_id)
+        gps = {'latitude': 12.0, 'longitude': 77.0, 'accuracy_m': 5,
+               'request_token': str(uuid4())}
+        visit.action_check_in(gps)
+        visit.action_check_out({**gps, 'request_token': str(uuid4())})
+        visit.write({
+            'outcome_id': outcome.id,
+            'followup_required': True,
+            'next_followup_date': fields.Date.today() + timedelta(days=2),
+            'next_followup_user_id': self.sales_id,
+            'next_followup_summary': 'Concurrent completion follow-up',
+        })
+        self.env.cr.commit()
+        barrier = threading.Barrier(2)
+
+        def complete():
+            with self.registry.cursor() as cr:
+                env = api.Environment(cr, self.sales_id,
+                                      {'allowed_company_ids': [self.company_id]})
+                barrier.wait(timeout=10)
+                try:
+                    result = env['gt.sales.visit'].browse(visit_id).action_complete_visit()
+                    cr.commit()
+                    return result
+                except Exception:
+                    cr.rollback()
+                    raise
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = [f.result(timeout=30) for f in [pool.submit(complete), pool.submit(complete)]]
+        self.assertEqual(results[0]['activity_id'], results[1]['activity_id'])
+        with self.registry.cursor() as cr:
+            cr.execute('SELECT state, completed_at, followup_activity_id FROM gt_sales_visit WHERE id=%s',
+                       [visit_id])
+            state, completed_at, activity_id = cr.fetchone()
+            self.assertEqual(state, 'completed')
+            self.assertTrue(completed_at)
+            self.assertEqual(activity_id, results[0]['activity_id'])
+            cr.execute('SELECT count(*) FROM mail_activity WHERE gt_source_visit_id=%s', [visit_id])
+            self.assertEqual(cr.fetchone()[0], 1)
+            cr.execute("SELECT count(*) FROM gt_sales_visit_event WHERE visit_id=%s AND event_type='visit_completed'",
+                       [visit_id])
             self.assertEqual(cr.fetchone()[0], 1)
 
 
