@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_territory_list" model="ir.ui.view">
+        <field name="name">gt.sales.territory.list</field>
+        <field name="model">gt.sales.territory</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_territory_form" model="ir.ui.view">
+        <field name="name">gt.sales.territory.form</field>
+        <field name="model">gt.sales.territory</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title"><h1><field name="name" placeholder="Territory name"/></h1></div>
+                    <group>
+                        <group><field name="code"/><field name="company_id" groups="base.group_multi_company"/></group>
+                        <group><field name="active"/></group>
+                    </group>
+                    <notebook>
+                        <page string="Description"><field name="description" placeholder="Describe the market or geographic area..."/></page>
+                        <page string="Assignments" groups="gt_field_sales_visit_planner.group_sales_manager">
+                            <field name="assignment_ids" readonly="1"><list><field name="user_id"/><field name="date_from"/><field name="date_to"/><field name="active"/></list></field>
+                        </page>
+                        <page string="Customers" groups="gt_field_sales_visit_planner.group_sales_manager">
+                            <field name="customer_mapping_ids" readonly="1"><list><field name="partner_id"/><field name="active"/></list></field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="view_territory_search" model="ir.ui.view">
+        <field name="name">gt.sales.territory.search</field>
+        <field name="model">gt.sales.territory</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/><field name="code"/><field name="company_id"/>
+                <filter name="active" string="Active" domain="[('active', '=', True)]"/>
+                <filter name="inactive" string="Archived" domain="[('active', '=', False)]"/>
+                <group expand="0" string="Group By"><filter name="group_company" string="Company" context="{'group_by': 'company_id'}"/></group>
+            </search>
+        </field>
+    </record>
+    <record id="view_assignment_list" model="ir.ui.view">
+        <field name="name">gt.sales.territory.assignment.list</field>
+        <field name="model">gt.sales.territory.assignment</field>
+        <field name="arch" type="xml">
+            <list><field name="territory_id"/><field name="user_id"/><field name="company_id" groups="base.group_multi_company"/><field name="date_from"/><field name="date_to"/><field name="active"/></list>
+        </field>
+    </record>
+    <record id="view_assignment_form" model="ir.ui.view">
+        <field name="name">gt.sales.territory.assignment.form</field>
+        <field name="model">gt.sales.territory.assignment</field>
+        <field name="arch" type="xml">
+            <form><sheet><group><group><field name="company_id"/><field name="territory_id" domain="[('company_id', '=', company_id), ('active', '=', True)]"/><field name="user_id"/></group><group><field name="date_from"/><field name="date_to"/><field name="active"/></group></group></sheet></form>
+        </field>
+    </record>
+    <record id="view_assignment_search" model="ir.ui.view">
+        <field name="name">gt.sales.territory.assignment.search</field>
+        <field name="model">gt.sales.territory.assignment</field>
+        <field name="arch" type="xml">
+            <search><field name="territory_id"/><field name="user_id"/><field name="company_id"/><filter name="active" string="Active" domain="[('active', '=', True)]"/><filter name="inactive" string="Archived" domain="[('active', '=', False)]"/><group expand="0" string="Group By"><filter name="group_territory" string="Territory" context="{'group_by': 'territory_id'}"/><filter name="group_salesperson" string="Salesperson" context="{'group_by': 'user_id'}"/></group></search>
+        </field>
+    </record>
+    <record id="view_customer_list" model="ir.ui.view">
+        <field name="name">gt.sales.territory.customer.list</field>
+        <field name="model">gt.sales.territory.customer</field>
+        <field name="arch" type="xml">
+            <list><field name="partner_id"/><field name="territory_id"/><field name="company_id" groups="base.group_multi_company"/><field name="active"/></list>
+        </field>
+    </record>
+    <record id="view_customer_form" model="ir.ui.view">
+        <field name="name">gt.sales.territory.customer.form</field>
+        <field name="model">gt.sales.territory.customer</field>
+        <field name="arch" type="xml">
+            <form><sheet><group><group><field name="company_id"/><field name="territory_id" domain="[('company_id', '=', company_id), ('active', '=', True)]"/></group><group><field name="partner_id"/><field name="active"/></group></group><div class="text-muted">To reassign a customer, archive the current allocation and create a new one.</div></sheet><chatter/></form>
+        </field>
+    </record>
+    <record id="view_customer_search" model="ir.ui.view">
+        <field name="name">gt.sales.territory.customer.search</field>
+        <field name="model">gt.sales.territory.customer</field>
+        <field name="arch" type="xml">
+            <search><field name="partner_id"/><field name="territory_id"/><field name="company_id"/><filter name="active" string="Active" domain="[('active', '=', True)]"/><filter name="inactive" string="Archived" domain="[('active', '=', False)]"/><group expand="0" string="Group By"><filter name="group_territory" string="Territory" context="{'group_by': 'territory_id'}"/></group></search>
+        </field>
+    </record>
+    <record id="action_territory" model="ir.actions.act_window">
+        <field name="name">Territories</field><field name="res_model">gt.sales.territory</field><field name="view_mode">list,form</field><field name="context">{'search_default_active': 1}</field><field name="help" type="html"><p class="o_view_nocontent_smiling_face">Create your first sales territory</p></field>
+    </record>
+    <record id="action_assignment" model="ir.actions.act_window">
+        <field name="name">Territory Assignments</field><field name="res_model">gt.sales.territory.assignment</field><field name="view_mode">list,form</field><field name="context">{'search_default_active': 1}</field>
+    </record>
+    <record id="action_customer" model="ir.actions.act_window">
+        <field name="name">Customer Allocations</field><field name="res_model">gt.sales.territory.customer</field><field name="view_mode">list,form</field><field name="context">{'search_default_active': 1}</field>
+    </record>
+    <menuitem id="menu_field_sales" name="Field Sales" sequence="55" groups="group_field_salesperson,group_sales_manager,group_field_sales_admin"/>
+    <menuitem id="menu_field_sales_config" name="Configuration" parent="menu_field_sales" sequence="10" groups="group_sales_manager,group_field_sales_admin"/>
+    <menuitem id="menu_territory" name="Territories" parent="menu_field_sales_config" action="action_territory" sequence="10" groups="group_sales_manager,group_field_sales_admin"/>
+    <menuitem id="menu_assignment" name="Territory Assignments" parent="menu_field_sales_config" action="action_assignment" sequence="20" groups="group_sales_manager,group_field_sales_admin"/>
+    <menuitem id="menu_customer" name="Customer Allocations" parent="menu_field_sales_config" action="action_customer" sequence="30" groups="group_sales_manager,group_field_sales_admin"/>
+</odoo>

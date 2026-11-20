@@ -1,0 +1,10 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_territory_salesperson,territory salesperson,model_gt_sales_territory,group_field_salesperson,1,0,0,0
+access_assignment_salesperson,assignment salesperson,model_gt_sales_territory_assignment,group_field_salesperson,1,0,0,0
+access_allocation_salesperson,allocation salesperson,model_gt_sales_territory_customer,group_field_salesperson,1,0,0,0
+access_territory_manager,territory manager,model_gt_sales_territory,group_sales_manager,1,1,1,1
+access_assignment_manager,assignment manager,model_gt_sales_territory_assignment,group_sales_manager,1,1,1,0
+access_allocation_manager,allocation manager,model_gt_sales_territory_customer,group_sales_manager,1,1,1,0
+access_territory_admin,territory admin,model_gt_sales_territory,group_field_sales_admin,1,1,1,1
+access_assignment_admin,assignment admin,model_gt_sales_territory_assignment,group_field_sales_admin,1,1,1,0
+access_allocation_admin,allocation admin,model_gt_sales_territory_customer,group_field_sales_admin,1,1,1,0
