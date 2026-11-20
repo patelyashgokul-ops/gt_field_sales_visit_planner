@@ -29,6 +29,11 @@ class SalesVisitOutcome(models.Model):
 
     _code_company_unique = models.Constraint('UNIQUE(company_id, code)', 'Outcome codes must be unique per company.')
 
+    @api.constrains('name', 'code')
+    def _check_name_code(self):
+        if any(not (record.name or '').strip() or not (record.code or '').strip() for record in self):
+            raise ValidationError('Outcome name and code cannot be blank.')
+
     @api.model_create_multi
     def create(self, vals_list):
         if not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
@@ -213,6 +218,13 @@ class SalesVisitBusiness(models.Model):
             'policy_snapshot': {'outcome': snapshot, 'followup_required': self.followup_required},
             'explanation': (self.meeting_summary or '')[:2000],
         })
+        if activity:
+            self.env['gt.sales.visit.event'].sudo().create({
+                'visit_id': self.id, 'company_id': self.company_id.id, 'actor_user_id': self.env.user.id,
+                'event_type': 'followup_scheduled', 'occurred_at': now, 'location_status': 'not_required',
+                'policy_snapshot': {'activity_id': activity.id, 'deadline': fields.Date.to_string(activity.date_deadline),
+                                    'user_id': activity.user_id.id},
+            })
         return {'visit_id': self.id, 'state': 'completed', 'completed_at': fields.Datetime.to_string(now),
                 'activity_id': activity.id or False}
 
@@ -263,7 +275,8 @@ class SalesVisitBusiness(models.Model):
                    'followup_required', 'next_followup_date', 'next_followup_user_id', 'next_followup_summary'}
         if not values or set(values) - allowed:
             raise ValidationError('The correction contains unsupported fields.')
-        before = {key: self[key].id if self._fields[key].type == 'many2one' else self[key]
+        before = {key: (self[key].id if self._fields[key].type == 'many2one' else
+                        fields.Date.to_string(self[key]) if self._fields[key].type == 'date' else self[key])
                   for key in values}
         self._validate_business_values(values)
         if values.get('outcome_id'):
@@ -283,10 +296,25 @@ class SalesVisitBusiness(models.Model):
                     'user_id': values.get('next_followup_user_id', self.next_followup_user_id.id),
                     'summary': values.get('next_followup_summary', self.next_followup_summary),
                 })
+        elif values.get('followup_required', self.followup_required):
+            if self.followup_completed_at:
+                raise ValidationError('A completed follow-up cannot be silently recreated by a correction.')
+            todo_type = self.env.ref('mail.mail_activity_data_todo', raise_if_not_found=False)
+            if not todo_type:
+                raise ValidationError('The standard To Do activity type is unavailable.')
+            activity = self.env['mail.activity'].sudo().create({
+                'res_model_id': self.env['ir.model']._get_id('gt.sales.visit'), 'res_id': self.id,
+                'activity_type_id': todo_type.id, 'summary': self.next_followup_summary.strip(),
+                'note': self.next_followup_summary.strip(), 'date_deadline': self.next_followup_date,
+                'user_id': self.next_followup_user_id.id, 'gt_source_visit_id': self.id,
+            })
+            models.Model.write(self, {'followup_activity_id': activity.id})
+        audit_values = {key: fields.Date.to_string(value) if isinstance(value, datetime) else value
+                        for key, value in values.items()}
         self.env['gt.sales.visit.event'].sudo().create({
             'visit_id': self.id, 'company_id': self.company_id.id, 'actor_user_id': self.env.user.id,
             'event_type': 'business_result_corrected', 'occurred_at': fields.Datetime.now(),
-            'location_status': 'not_required', 'policy_snapshot': {'before': before, 'after': values},
+            'location_status': 'not_required', 'policy_snapshot': {'before': before, 'after': audit_values},
             'explanation': reason.strip(),
         })
         return True
@@ -371,9 +399,14 @@ class MailActivityVisitFollowup(models.Model):
         result = super().write(vals)
         for activity in sourced:
             visit = activity.gt_source_visit_id
-            event_type = 'followup_cancelled' if vals.get('active') is False else (
+            event_type = 'followup_cancelled' if vals.get('active') is False and not activity.gt_source_visit_id.followup_completed_at else (
                 'followup_reassigned' if 'user_id' in vals else (
                     'followup_deadline_changed' if 'date_deadline' in vals else 'business_result_corrected'))
+            models.Model.write(visit, {
+                'next_followup_date': activity.date_deadline,
+                'next_followup_user_id': activity.user_id.id,
+                'next_followup_summary': activity.summary,
+            })
             self.env['gt.sales.visit.event'].sudo().create({
                 'visit_id': visit.id, 'company_id': visit.company_id.id, 'actor_user_id': self.env.user.id,
                 'event_type': event_type, 'occurred_at': fields.Datetime.now(), 'location_status': 'not_required',
@@ -386,6 +419,8 @@ class MailActivityVisitFollowup(models.Model):
     def action_feedback(self, feedback=False, attachment_ids=None):
         for activity in self.filtered('gt_source_visit_id'):
             visit = activity.gt_source_visit_id
+            if visit.followup_completed_at:
+                continue
             visit._check_business_actor()
             completed_at = fields.Datetime.now()
             self.env['gt.sales.visit.event'].sudo().create({
@@ -448,11 +483,12 @@ class SalesVisitBusinessEvent(models.Model):
     event_type = fields.Selection(selection_add=[
         ('visit_completed', 'Visit Completed'), ('visit_missed', 'Visit Marked Missed'),
         ('business_result_corrected', 'Business Result Corrected'),
-        ('followup_completed', 'Follow-up Completed'), ('followup_cancelled', 'Follow-up Cancelled'),
+        ('followup_scheduled', 'Follow-up Scheduled'), ('followup_completed', 'Follow-up Completed'),
+        ('followup_cancelled', 'Follow-up Cancelled'),
         ('followup_reassigned', 'Follow-up Reassigned'), ('followup_deadline_changed', 'Follow-up Deadline Changed'),
     ], ondelete={
         'visit_completed': 'cascade', 'visit_missed': 'cascade', 'business_result_corrected': 'cascade',
-        'followup_completed': 'cascade', 'followup_cancelled': 'cascade',
+        'followup_scheduled': 'cascade', 'followup_completed': 'cascade', 'followup_cancelled': 'cascade',
         'followup_reassigned': 'cascade', 'followup_deadline_changed': 'cascade',
     })
 
