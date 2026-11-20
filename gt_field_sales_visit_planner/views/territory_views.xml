@@ -100,6 +100,7 @@
         <field name="name">Customer Allocations</field><field name="res_model">gt.sales.territory.customer</field><field name="view_mode">list,form</field><field name="context">{'search_default_active': 1}</field>
     </record>
     <menuitem id="menu_field_sales" name="Field Sales" sequence="55" groups="group_field_salesperson,group_sales_manager,group_field_sales_admin"/>
+    <menuitem id="menu_my_territories" name="My Territories" parent="menu_field_sales" action="action_territory" sequence="5" groups="group_field_salesperson"/>
     <menuitem id="menu_field_sales_config" name="Configuration" parent="menu_field_sales" sequence="10" groups="group_sales_manager,group_field_sales_admin"/>
     <menuitem id="menu_territory" name="Territories" parent="menu_field_sales_config" action="action_territory" sequence="10" groups="group_sales_manager,group_field_sales_admin"/>
     <menuitem id="menu_assignment" name="Territory Assignments" parent="menu_field_sales_config" action="action_assignment" sequence="20" groups="group_sales_manager,group_field_sales_admin"/>

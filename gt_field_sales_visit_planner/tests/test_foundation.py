@@ -64,6 +64,23 @@ class TestFoundation(FieldSalesCase):
             self.assertFalse(self.env[model].with_user(self.salesperson_a).has_access('create'))
             self.assertTrue(self.env[model].with_user(self.manager).has_access('create'))
 
+    def test_salesperson_reads_only_assigned_territory(self):
+        Assignment = self.env['gt.sales.territory.assignment']
+        Allocation = self.env['gt.sales.territory.customer']
+        Assignment.create(self.assignment_vals())
+        mapping = Allocation.create(self.allocation_vals())
+        self.assertEqual(self.env['gt.sales.territory'].with_user(self.salesperson_a).search([]).ids, self.territory_a.ids)
+        self.assertEqual(Allocation.with_user(self.salesperson_a).search([]).ids, mapping.ids)
+        self.assertFalse(self.env['gt.sales.territory'].with_user(self.salesperson_b).search([]))
+
+    def test_application_admin_still_company_scoped(self):
+        Territory = self.env['gt.sales.territory']
+        self.assertFalse(Territory.with_user(self.app_admin).search([('id', '=', self.territory_b.id)]))
+        with self.assertRaises((AccessError, ValidationError)):
+            Territory.with_user(self.app_admin).create({
+                'name': 'Cross Company', 'code': 'CROSS', 'company_id': self.company_b.id,
+            })
+
     def test_views_registered(self):
         for name in ('view_territory_form', 'view_territory_list', 'view_assignment_form', 'view_customer_form'):
             self.assertTrue(self.env.ref('gt_field_sales_visit_planner.' + name).arch_db)

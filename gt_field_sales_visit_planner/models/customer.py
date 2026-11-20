@@ -36,6 +36,7 @@ class SalesTerritoryCustomer(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        self.check_access('create')
         for vals in vals_list:
             territory = self.env['gt.sales.territory'].browse(vals.get('territory_id'))
             if not territory.exists() or territory.company_id not in self.env.companies:

@@ -26,6 +26,7 @@ class SalesTerritory(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        self.check_access('create')
         for vals in vals_list:
             company = self.env['res.company'].browse(vals.get('company_id') or self.env.company.id)
             if not company.exists() or company not in self.env.companies:

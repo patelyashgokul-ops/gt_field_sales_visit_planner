@@ -46,6 +46,7 @@ class SalesTerritoryAssignment(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        self.check_access('create')
         user_ids = [vals.get('user_id') for vals in vals_list if vals.get('user_id')]
         if user_ids:
             self.env.cr.execute('SELECT id FROM res_users WHERE id = ANY(%s) ORDER BY id FOR UPDATE', [user_ids])
