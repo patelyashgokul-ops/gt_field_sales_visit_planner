@@ -23,11 +23,11 @@ class TestVisitPlanning(FieldSalesCase):
                 'visit_date': '2026-05-15', 'timezone': 'Asia/Kolkata',
                 'territory_id': self.territory_a.id}
         vals.update(extra)
-        return self.env['gt.sales.visit.plan'].with_user(self.manager).create(vals)
+        return self.env['gt.sales.visit.plan'].with_user(self.manager).with_context(allowed_company_ids=[self.company_a.id]).create(vals)
 
     def test_plan_and_visit_confirm_and_lock(self):
         plan = self.plan()
-        visit = self.env['gt.sales.visit'].with_user(self.manager).create({
+        visit = self.env['gt.sales.visit'].with_user(self.manager).with_context(allowed_company_ids=[self.company_a.id]).create({
             'plan_id': plan.id, 'partner_id': self.customer_a.id, 'sequence': 10,
         })
         plan.with_user(self.manager).action_confirm()
@@ -44,7 +44,7 @@ class TestVisitPlanning(FieldSalesCase):
             self.plan()
         plan = self.plan(visit_date='2026-05-16')
         with self.assertRaises(ValidationError):
-            self.env['gt.sales.visit'].with_user(self.manager).create({
+            self.env['gt.sales.visit'].with_user(self.manager).with_context(allowed_company_ids=[self.company_a.id]).create({
                 'plan_id': plan.id, 'partner_id': self.customer_b.id, 'sequence': 10,
             })
 
@@ -53,7 +53,7 @@ class TestVisitPlanning(FieldSalesCase):
         with self.assertRaises(ValidationError):
             empty.with_user(self.manager).action_confirm()
         plan = self.plan(visit_date='2026-05-17')
-        visit = self.env['gt.sales.visit'].with_user(self.manager).create({
+        visit = self.env['gt.sales.visit'].with_user(self.manager).with_context(allowed_company_ids=[self.company_a.id]).create({
             'plan_id': plan.id, 'partner_id': self.customer_a.id, 'sequence': 10,
         })
         self.env['gt.sales.territory.customer'].search([('partner_id', '=', self.customer_a.id)]).write({'active': False})
@@ -64,7 +64,7 @@ class TestVisitPlanning(FieldSalesCase):
 
     def test_reschedule_history_and_mandatory_reason(self):
         plan = self.plan(visit_date='2026-05-18')
-        visit = self.env['gt.sales.visit'].with_user(self.manager).create({
+        visit = self.env['gt.sales.visit'].with_user(self.manager).with_context(allowed_company_ids=[self.company_a.id]).create({
             'plan_id': plan.id, 'partner_id': self.customer_a.id, 'sequence': 10,
         })
         with self.assertRaises(ValidationError):
@@ -76,7 +76,7 @@ class TestVisitPlanning(FieldSalesCase):
 
     def test_cancel_reason_and_plan_history(self):
         plan = self.plan(visit_date='2026-05-20')
-        self.env['gt.sales.visit'].with_user(self.manager).create({'plan_id': plan.id, 'partner_id': self.customer_a.id, 'sequence': 10})
+        self.env['gt.sales.visit'].with_user(self.manager).with_context(allowed_company_ids=[self.company_a.id]).create({'plan_id': plan.id, 'partner_id': self.customer_a.id, 'sequence': 10})
         with self.assertRaises(ValidationError):
             plan.with_user(self.manager).action_cancel(' ')
         plan.with_user(self.manager).action_cancel('Weather')
