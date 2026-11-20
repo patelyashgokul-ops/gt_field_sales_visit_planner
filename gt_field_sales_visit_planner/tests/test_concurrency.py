@@ -168,12 +168,13 @@ class TestConcurrentAssignment(TransactionCase):
                     cr.rollback()
                     if getattr(getattr(error, 'diag', None), 'constraint_name', '') == 'gt_sales_visit_unique_replacement_origin':
                         return 'rejected'
-                    raise
+                    return ('unexpected', repr(error))
 
         try:
             with ThreadPoolExecutor(max_workers=2) as pool:
                 first = pool.submit(worker, True)
-                self.assertTrue(first_created.wait(10))
+                if not first_created.wait(10):
+                    self.fail('First reschedule did not complete: %r' % (first.result(1),))
                 second = pool.submit(worker, False)
                 self.assertTrue(second_attempting.wait(10))
                 time.sleep(0.2)
