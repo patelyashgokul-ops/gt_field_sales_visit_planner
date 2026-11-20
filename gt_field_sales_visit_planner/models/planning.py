@@ -99,6 +99,8 @@ class SalesVisitPlan(models.Model):
                 raise UserError('Confirmed or cancelled plans require an authorized planning action.')
             if 'user_id' in vals and not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
                 raise AccessError('Salespersons can only plan their own visits.')
+            if vals.get('state') and not self.env.context.get('_planning_transition'):
+                raise AccessError('Use the confirm or cancellation action to change plan state.')
         result = super().write(vals)
         for plan in self:
             plan._validate_plan_context()
@@ -126,7 +128,7 @@ class SalesVisitPlan(models.Model):
             plan._validate_sequences(visits)
             visits._validate_eligibility()
             visits._validate_time_windows()
-            visits.write({'state': 'planned'})
+            visits.with_context(_planning_transition=True).write({'state': 'planned'})
             plan.with_context(_planning_transition=True).write({
                 'state': 'confirmed', 'confirmed_at': fields.Datetime.now(), 'confirmed_by': self.env.user.id,
             })
@@ -329,3 +331,13 @@ class SalesVisit(models.Model):
         })
         self.with_context(_planning_transition=True).write({'state': 'rescheduled', 'reschedule_reason': reason.strip()})
         return replacement
+
+    def unlink(self):
+        if any(v.state != 'draft' for v in self):
+            raise AccessError('Historical visits cannot be deleted.')
+        for visit in self:
+            check_allowed_company(visit.plan_id)
+            self._check_plan_owner(visit.plan_id)
+            if visit.plan_id.state != 'draft':
+                raise UserError('Visits can only be deleted from draft plans.')
+        return super().unlink()

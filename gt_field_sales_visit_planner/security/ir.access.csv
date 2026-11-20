@@ -11,3 +11,11 @@ access_allocation_manager,allocation manager,gt.sales.territory.customer,gt_fiel
 access_territory_admin,territory admin,gt.sales.territory,gt_field_sales_visit_planner.group_field_sales_admin,crud,
 access_assignment_admin,assignment admin,gt.sales.territory.assignment,gt_field_sales_visit_planner.group_field_sales_admin,cru,
 access_allocation_admin,allocation admin,gt.sales.territory.customer,gt_field_sales_visit_planner.group_field_sales_admin,cru,
+restrict_plan_company,visit plan company boundary,gt.sales.visit.plan,,crud,"[('company_id', 'in', company_ids)]"
+restrict_visit_company,visit company boundary,gt.sales.visit,,crud,"[('company_id', 'in', company_ids)]"
+access_plan_salesperson,own visit plans,gt.sales.visit.plan,gt_field_sales_visit_planner.group_field_salesperson,crud,"[('user_id', '=', user.id)]"
+access_visit_salesperson,own visits,gt.sales.visit,gt_field_sales_visit_planner.group_field_salesperson,crud,"[('user_id', '=', user.id)]"
+access_plan_manager,company visit plans,gt.sales.visit.plan,gt_field_sales_visit_planner.group_sales_manager,crud,
+access_visit_manager,company visits,gt.sales.visit,gt_field_sales_visit_planner.group_sales_manager,crud,
+access_plan_admin,company visit plans administrator,gt.sales.visit.plan,gt_field_sales_visit_planner.group_field_sales_admin,crud,
+access_visit_admin,company visits administrator,gt.sales.visit,gt_field_sales_visit_planner.group_field_sales_admin,crud,
