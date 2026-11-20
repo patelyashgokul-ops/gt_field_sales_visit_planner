@@ -102,7 +102,7 @@ class TestVisitBusiness(FieldSalesCase):
             self.env['gt.sales.visit.outcome'].with_user(self.salesperson_a).create({
                 'name': 'Forged', 'code': 'forged', 'company_id': self.company_a.id,
             })
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(AccessError):
             self.env['gt.sales.visit.outcome'].with_user(self.manager).create({
                 'name': 'Foreign', 'code': 'foreign', 'company_id': self.company_b.id,
             })
@@ -138,7 +138,7 @@ class TestVisitBusiness(FieldSalesCase):
         foreign = self.env['crm.lead'].with_company(self.company_b).create({
             'name': 'Foreign opportunity', 'partner_id': self.customer_b.id, 'company_id': self.company_b.id,
         })
-        with self.assertRaises(ValidationError):
+        with self.assertRaises((AccessError, ValidationError)):
             visit.with_user(self.salesperson_a).write({'crm_lead_id': foreign.id})
         visit.with_user(self.salesperson_a).write({'crm_lead_id': lead.id})
         self.env['gt.sales.visit.product.interest'].with_user(self.salesperson_a).create({

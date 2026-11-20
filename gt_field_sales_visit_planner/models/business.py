@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import date, datetime
 
 import pytz
 
@@ -36,7 +36,7 @@ class SalesVisitOutcome(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        if not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
+        if not self.env.su and not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
             raise AccessError('Only Field Sales managers can configure visit outcomes.')
         for vals in vals_list:
             company = self.env['res.company'].browse(vals.get('company_id') or self.env.company.id)
@@ -45,7 +45,7 @@ class SalesVisitOutcome(models.Model):
         return super().create(vals_list)
 
     def write(self, vals):
-        if not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
+        if not self.env.su and not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
             raise AccessError('Only Field Sales managers can configure visit outcomes.')
         for outcome in self:
             check_allowed_company(outcome)
@@ -309,7 +309,7 @@ class SalesVisitBusiness(models.Model):
                 'user_id': self.next_followup_user_id.id, 'gt_source_visit_id': self.id,
             })
             models.Model.write(self, {'followup_activity_id': activity.id})
-        audit_values = {key: fields.Date.to_string(value) if isinstance(value, datetime) else value
+        audit_values = {key: fields.Date.to_string(value) if isinstance(value, date) else value
                         for key, value in values.items()}
         self.env['gt.sales.visit.event'].sudo().create({
             'visit_id': self.id, 'company_id': self.company_id.id, 'actor_user_id': self.env.user.id,
@@ -334,6 +334,11 @@ class SalesVisitProductInterest(models.Model):
 
     _unique_product_interest = models.UniqueIndex('(visit_id, product_name)', 'A product can be recorded once per visit.')
 
+    @api.constrains('product_name')
+    def _check_product_name(self):
+        if any(not (line.product_name or '').strip() for line in self):
+            raise ValidationError('Product interest name cannot be blank.')
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
@@ -349,6 +354,13 @@ class SalesVisitProductInterest(models.Model):
             if line.visit_id.state != 'checked_out_pending_outcome':
                 raise AccessError('Product interests on completed visits are protected.')
         return super().write(vals)
+
+    def unlink(self):
+        for line in self:
+            line.visit_id._check_business_actor()
+            if line.visit_id.state != 'checked_out_pending_outcome':
+                raise AccessError('Product interests on completed visits are protected.')
+        return super().unlink()
 
 
 class MailActivityVisitFollowup(models.Model):
@@ -399,6 +411,8 @@ class MailActivityVisitFollowup(models.Model):
         result = super().write(vals)
         for activity in sourced:
             visit = activity.gt_source_visit_id
+            if vals.get('active') is False and visit.followup_completed_at:
+                continue
             event_type = 'followup_cancelled' if vals.get('active') is False and not activity.gt_source_visit_id.followup_completed_at else (
                 'followup_reassigned' if 'user_id' in vals else (
                     'followup_deadline_changed' if 'date_deadline' in vals else 'business_result_corrected'))
