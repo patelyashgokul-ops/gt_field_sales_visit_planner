@@ -172,6 +172,11 @@ class SalesVisitEvent(models.Model):
     _order = 'occurred_at, id'
     _check_company_auto = True
 
+    _one_checkin_and_checkout_per_visit = models.UniqueIndex(
+        "(visit_id, event_type) WHERE event_type IN ('check_in', 'check_out')",
+        'A visit can have only one check-in and one check-out evidence event.',
+    )
+
     visit_id = fields.Many2one('gt.sales.visit', required=True, index=True, ondelete='restrict', check_company=True)
     company_id = fields.Many2one('res.company', required=True, index=True, ondelete='restrict')
     actor_user_id = fields.Many2one('res.users', required=True, index=True, ondelete='restrict')

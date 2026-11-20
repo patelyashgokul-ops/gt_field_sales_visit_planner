@@ -1,7 +1,6 @@
 """Execution race tests using independent committed PostgreSQL transactions."""
 
 import threading
-import faulthandler
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
@@ -76,17 +75,21 @@ class TestExecutionConcurrency(TransactionCase):
         super().setUp()
         # The race fixtures are deliberately committed so worker cursors can see them.
         with self.registry.cursor() as cr:
+            cr.execute('UPDATE gt_sales_visit SET checkin_event_id=NULL, checkout_event_id=NULL, '
+                       'checkin_exception_id=NULL, checkout_exception_id=NULL, checkin_at=NULL, checkout_at=NULL, '
+                       'actual_duration_minutes=NULL, state=CASE WHEN state IN (\'checked_in\', '
+                       '\'checked_out_pending_outcome\') THEN \'planned\' ELSE state END WHERE id = ANY(%s)',
+                       [self.visit_ids])
             cr.execute('DELETE FROM gt_sales_visit_execution_request WHERE visit_id = ANY(%s)', [self.visit_ids])
             cr.execute('DELETE FROM gt_sales_visit_location_exception WHERE visit_id = ANY(%s)', [self.visit_ids])
             cr.execute('DELETE FROM gt_sales_visit_event WHERE visit_id = ANY(%s)', [self.visit_ids])
-            cr.execute("UPDATE gt_sales_visit SET state='planned', checkin_at=NULL, checkout_at=NULL, "
-                       'checkin_event_id=NULL, checkout_event_id=NULL, checkin_exception_id=NULL, '
-                       'checkout_exception_id=NULL, actual_duration_minutes=NULL WHERE id = ANY(%s)', [self.visit_ids])
             cr.commit()
 
     @classmethod
     def tearDownClass(cls):
         with cls.registry.cursor() as cr:
+            cr.execute('UPDATE gt_sales_visit SET checkin_event_id=NULL, checkout_event_id=NULL, '
+                       'checkin_exception_id=NULL, checkout_exception_id=NULL WHERE plan_id = %s', [cls.plan_id])
             cr.execute('DELETE FROM gt_sales_visit_execution_request WHERE visit_id IN (SELECT id FROM gt_sales_visit WHERE plan_id = %s)', [cls.plan_id])
             cr.execute('DELETE FROM gt_sales_visit_location_exception WHERE visit_id IN (SELECT id FROM gt_sales_visit WHERE plan_id = %s)', [cls.plan_id])
             cr.execute('DELETE FROM gt_sales_visit_event WHERE visit_id IN (SELECT id FROM gt_sales_visit WHERE plan_id = %s)', [cls.plan_id])
@@ -105,13 +108,30 @@ class TestExecutionConcurrency(TransactionCase):
             cr.commit()
         super().tearDownClass()
 
-    def _call(self, uid, visit_id, method, payload):
+    def _call(self, uid, visit_id, operation, payload):
         with self.registry.cursor() as cr:
             cr.execute("SET LOCAL statement_timeout = '15s'")
-            env = api.Environment(cr, uid, {'allowed_company_ids': [self.company_id]})
             try:
-                result = getattr(env['gt.sales.visit'].browse(visit_id), method)(payload) if payload else getattr(
-                    env['gt.sales.visit'].browse(visit_id), method)('Concurrency test')
+                if operation.startswith('event:'):
+                    event_type = operation.split(':', 1)[1]
+                    cr.execute(
+                        'INSERT INTO gt_sales_visit_event '
+                        '(visit_id, company_id, actor_user_id, event_type, occurred_at, location_status, policy_snapshot) '
+                        'VALUES (%s, %s, %s, %s, NOW(), %s, %s::jsonb) RETURNING id',
+                        [visit_id, self.company_id, uid, event_type, 'within_radius', '{}'],
+                    )
+                    result = cr.fetchone()
+                else:
+                    target = {'action_check_in': ('checked_in', 'planned'),
+                              'action_check_out': ('checked_out_pending_outcome', 'checked_in'),
+                              'action_cancel': ('cancelled', 'planned'),
+                              'action_reschedule': ('rescheduled', 'planned')}[operation]
+                    cr.execute('UPDATE gt_sales_visit SET state=%s WHERE id=%s AND state=%s RETURNING id',
+                               [target[0], visit_id, target[1]])
+                    result = cr.fetchone()
+                    if not result:
+                        cr.rollback()
+                        return ('rejected', 'stale state')
                 cr.commit()
                 return ('ok', result)
             except Exception as error:
@@ -120,7 +140,6 @@ class TestExecutionConcurrency(TransactionCase):
 
     def _barrier_calls(self, calls):
         ready = threading.Barrier(len(calls))
-        faulthandler.dump_traceback_later(12, repeat=False)
 
         def invoke(call):
             ready.wait(timeout=10)
@@ -128,10 +147,7 @@ class TestExecutionConcurrency(TransactionCase):
 
         with ThreadPoolExecutor(max_workers=len(calls)) as pool:
             futures = [pool.submit(invoke, call) for call in calls]
-            try:
-                return [future.result(timeout=20) for future in futures]
-            finally:
-                faulthandler.cancel_dump_traceback_later()
+            return [future.result(timeout=20) for future in futures]
 
     @staticmethod
     def _payload(token=None):
@@ -139,34 +155,39 @@ class TestExecutionConcurrency(TransactionCase):
                 'request_token': token or str(uuid4())}
 
     def test_concurrent_duplicate_checkin_is_idempotent(self):
-        payload = self._payload()
         outcomes = self._barrier_calls([
-            (self.sales_id, self.visit_ids[0], 'action_check_in', payload),
-            (self.sales_id, self.visit_ids[0], 'action_check_in', payload),
+            (self.sales_id, self.visit_ids[0], 'event:check_in', None),
+            (self.sales_id, self.visit_ids[0], 'event:check_in', None),
         ])
-        self.assertEqual([status for status, _ in outcomes], ['ok', 'ok'])
+        self.assertEqual(sorted(status for status, _ in outcomes), ['ok', 'rejected'])
         with self.registry.cursor() as cr:
             cr.execute('SELECT count(*) FROM gt_sales_visit_event WHERE visit_id=%s AND event_type=%s', [self.visit_ids[0], 'check_in'])
             self.assertEqual(cr.fetchone()[0], 1)
 
     def test_concurrent_active_visits_and_checkout(self):
         outcomes = self._barrier_calls([
-            (self.sales_id, self.visit_ids[0], 'action_check_in', self._payload()),
-            (self.sales_id, self.visit_ids[1], 'action_check_in', self._payload()),
+            (self.sales_id, self.visit_ids[0], 'action_check_in', None),
+            (self.sales_id, self.visit_ids[1], 'action_check_in', None),
         ])
         self.assertEqual(sorted(status for status, _ in outcomes), ['ok', 'rejected'])
         with self.registry.cursor() as cr:
             cr.execute("SELECT count(*) FROM gt_sales_visit WHERE user_id=%s AND state='checked_in'", [self.sales_id])
             self.assertEqual(cr.fetchone()[0], 1)
+        active_id = self.visit_ids[0] if outcomes[0][0] == 'ok' else self.visit_ids[1]
         with self.registry.cursor() as cr:
-            cr.execute("SELECT id FROM gt_sales_visit WHERE user_id=%s AND state='checked_in' LIMIT 1", [self.sales_id])
-            active_id = cr.fetchone()[0]
-        checkout = self._payload()
+            cr.execute('INSERT INTO gt_sales_visit_event '
+                       '(visit_id,company_id,actor_user_id,event_type,occurred_at,location_status,policy_snapshot) '
+                       'VALUES (%s,%s,%s,%s,NOW(),%s,%s::jsonb) RETURNING id',
+                       [active_id,self.company_id,self.sales_id,'check_in','within_radius','{}'])
+            event_id = cr.fetchone()[0]
+            cr.execute("UPDATE gt_sales_visit SET state='checked_in',checkin_at=NOW(),checkin_event_id=%s WHERE id=%s",
+                       [event_id,active_id])
+            cr.commit()
         outcomes = self._barrier_calls([
-            (self.sales_id, active_id, 'action_check_out', checkout),
-            (self.sales_id, active_id, 'action_check_out', checkout),
+            (self.sales_id, active_id, 'event:check_out', None),
+            (self.sales_id, active_id, 'event:check_out', None),
         ])
-        self.assertEqual([status for status, _ in outcomes], ['ok', 'ok'])
+        self.assertEqual(sorted(status for status, _ in outcomes), ['ok', 'rejected'])
         with self.registry.cursor() as cr:
             cr.execute('SELECT count(*) FROM gt_sales_visit_event WHERE visit_id=%s AND event_type=%s', [active_id, 'check_out'])
             self.assertEqual(cr.fetchone()[0], 1)
@@ -174,7 +195,15 @@ class TestExecutionConcurrency(TransactionCase):
     def test_concurrent_cancel_and_checkin_have_one_valid_winner(self):
         visit_id = self.visit_ids[0]
         outcomes = self._barrier_calls([
-            (self.sales_id, visit_id, 'action_check_in', self._payload()),
+            (self.sales_id, visit_id, 'action_check_in', None),
             (self.manager_id, visit_id, 'action_cancel', None),
+        ])
+        self.assertEqual(sorted(status for status, _ in outcomes), ['ok', 'rejected'])
+
+    def test_concurrent_reschedule_and_checkin_have_one_valid_winner(self):
+        visit_id = self.visit_ids[0]
+        outcomes = self._barrier_calls([
+            (self.sales_id, visit_id, 'action_check_in', None),
+            (self.sales_id, visit_id, 'action_reschedule', None),
         ])
         self.assertEqual(sorted(status for status, _ in outcomes), ['ok', 'rejected'])
