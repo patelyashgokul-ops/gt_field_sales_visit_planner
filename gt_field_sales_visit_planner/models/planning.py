@@ -210,6 +210,10 @@ class SalesVisit(models.Model):
         '(plan_id, sequence) WHERE state IN (\'draft\', \'planned\')',
         'Active visit sequence numbers must be unique within a plan.',
     )
+    _unique_replacement_origin = models.UniqueIndex(
+        '(reschedule_origin_id) WHERE reschedule_origin_id IS NOT NULL',
+        'A visit can have only one rescheduled replacement.',
+    )
 
     @api.depends('partner_id')
     def _compute_name(self):

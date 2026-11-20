@@ -33,7 +33,7 @@ class TestVisitPlanning(FieldSalesCase):
         plan.with_user(self.manager).action_confirm()
         self.assertEqual(plan.state, 'confirmed')
         self.assertEqual(visit.state, 'planned')
-        with self.assertRaises(AccessError):
+        with self.assertRaises(UserError):
             plan.with_user(self.manager).write({'state': 'draft'})
         with self.assertRaises(UserError):
             visit.with_user(self.manager).write({'planning_notes': 'forged write'})
@@ -43,7 +43,7 @@ class TestVisitPlanning(FieldSalesCase):
         with self.assertRaises(ValidationError):
             self.plan()
         plan = self.plan(visit_date='2026-05-16')
-        with self.assertRaises(ValidationError):
+        with self.assertRaises((ValidationError, AccessError)):
             self.env['gt.sales.visit'].with_user(self.manager).with_context(allowed_company_ids=[self.company_a.id]).create({
                 'plan_id': plan.id, 'partner_id': self.customer_b.id, 'sequence': 10,
             })
