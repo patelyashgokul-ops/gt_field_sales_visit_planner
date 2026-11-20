@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 
 from odoo import fields
 from odoo.exceptions import AccessError, UserError, ValidationError
@@ -152,6 +153,107 @@ class TestVisitExecution(FieldSalesCase):
         with self.assertRaises(UserError):
             self.execute_as_salesperson(visit, 'action_check_in', self.payload())
         self.assertEqual(visit.state, 'planned')
+
+    def test_unconfirmed_plan_does_not_allow_execution(self):
+        plan = self.env['gt.sales.visit.plan'].with_user(self.manager).create({
+            'company_id': self.company_a.id, 'user_id': self.salesperson_a.id,
+            'visit_date': fields.Date.today(), 'timezone': 'UTC', 'territory_id': self.territory_a.id,
+        })
+        visit = self.env['gt.sales.visit'].with_user(self.manager).create({
+            'plan_id': plan.id, 'partner_id': self.customer_a.id, 'sequence': 10,
+        })
+        with self.assertRaises(UserError):
+            self.execute_as_salesperson(visit, 'action_check_in', self.payload())
+        self.assertEqual(visit.state, 'draft')
+
+    def test_cancelled_and_rescheduled_visits_cannot_check_in(self):
+        cancelled = self.create_planned_visit()
+        cancelled.with_user(self.salesperson_a).action_cancel('Customer unavailable')
+        with self.assertRaises(UserError):
+            self.execute_as_salesperson(cancelled, 'action_check_in', self.payload())
+
+        rescheduled = self.create_planned_visit(visit_date=fields.Date.add(fields.Date.today(), days=1))
+        replacement = rescheduled.with_user(self.salesperson_a).action_reschedule(
+            fields.Date.add(fields.Date.today(), days=2), 'Customer requested a new date')
+        with self.assertRaises(UserError):
+            self.execute_as_salesperson(rescheduled, 'action_check_in', self.payload())
+        self.assertEqual(rescheduled.state, 'rescheduled')
+        self.assertEqual(replacement.reschedule_origin_id, rescheduled)
+
+    def test_simultaneous_active_visit_and_missing_policy_block(self):
+        plan = self.env['gt.sales.visit.plan'].with_user(self.manager).create({
+            'company_id': self.company_a.id, 'user_id': self.salesperson_a.id,
+            'visit_date': fields.Date.today(), 'timezone': 'UTC', 'territory_id': self.territory_a.id,
+        })
+        visit = self.env['gt.sales.visit'].with_user(self.manager).create({
+            'plan_id': plan.id, 'partner_id': self.customer_a.id, 'sequence': 10,
+        })
+        second = self.env['gt.sales.visit'].with_user(self.manager).create({
+            'plan_id': plan.id, 'partner_id': self.shared_customer.id, 'sequence': 20,
+        })
+        self.env['gt.sales.territory.customer'].create({
+            'territory_id': self.territory_a.id, 'company_id': self.company_a.id,
+            'partner_id': self.shared_customer.id,
+        })
+        plan.action_confirm()
+        self.execute_as_salesperson(visit, 'action_check_in', self.payload())
+        with self.assertRaises(UserError):
+            self.execute_as_salesperson(second, 'action_check_in', self.payload())
+        self.assertEqual(second.state, 'planned')
+        self.assertFalse(second.execution_event_ids)
+
+        # Absence of a company policy is deliberately fail-closed.
+        self.policy.with_user(self.manager).unlink()
+        fresh = self.create_planned_visit(visit_date=fields.Date.add(fields.Date.today(), days=1))
+        with self.assertRaises(UserError):
+            self.execute_as_salesperson(fresh, 'action_check_in', self.payload())
+        self.assertEqual(fresh.state, 'planned')
+
+    def test_manager_rejection_duplicate_review_and_no_coordinate_leak(self):
+        visit = self.create_planned_visit()
+        self.execute_as_salesperson(visit, 'action_check_in', {
+            'request_token': str(uuid.uuid4()), 'explanation': 'Position unavailable',
+        })
+        exception = visit.checkin_exception_id
+        exception.with_user(self.manager).action_review('rejected', 'Please retry at the customer site')
+        self.assertEqual(exception.review_state, 'rejected')
+        self.assertEqual(visit.checkin_event_id.location_status, 'missing')
+        with self.assertRaises(UserError):
+            exception.with_user(self.manager).action_review('approved', 'Conflicting second decision')
+
+    def test_reference_location_permissions_cross_company_event_and_import_bypass(self):
+        with self.assertRaises(AccessError):
+            self.location.with_user(self.salesperson_a).write({'latitude': 12.0})
+        visit = self.create_planned_visit()
+        with self.assertRaises((AccessError, ValidationError)):
+            self.env['gt.sales.visit.event'].sudo().create({
+                'visit_id': visit.id, 'company_id': self.company_b.id,
+                'actor_user_id': self.manager.id, 'event_type': 'check_in',
+                'occurred_at': fields.Datetime.now(), 'location_status': 'within_radius',
+                'policy_snapshot': {},
+            })
+        result = self.env['gt.sales.visit'].with_user(self.manager).load(
+            ['id', 'checkin_at'], [[str(visit.id), fields.Datetime.to_string(fields.Datetime.now())]])
+        self.assertTrue(result['messages'])
+        self.assertNotEqual(visit.state, 'checked_in')
+
+    def test_negative_duration_and_event_read_is_owner_scoped(self):
+        visit = self.create_planned_visit()
+        self.execute_as_salesperson(visit, 'action_check_in', self.payload())
+        visit.sudo()._apply_transition({'checkin_at': fields.Datetime.now() + timedelta(minutes=1)})
+        with self.assertRaises(ValidationError):
+            self.execute_as_salesperson(visit, 'action_check_out', self.payload())
+        self.assertEqual(visit.state, 'checked_in')
+        self.assertFalse(visit.checkout_event_id)
+
+        other = self.env['res.users'].create({
+            'name': 'Other field salesperson', 'login': 'other_field_sales_p03',
+            'company_id': self.company_a.id, 'company_ids': [(6, 0, [self.company_a.id])],
+            'group_ids': [(6, 0, [self.env.ref('base.group_user').id,
+                                  self.env.ref('gt_field_sales_visit_planner.group_field_salesperson').id])],
+        })
+        with self.assertRaises(AccessError):
+            visit.execution_event_ids.with_user(other).read(['latitude', 'longitude'])
 
     def test_company_location_boundaries_and_policy_snapshot(self):
         visit = self.create_planned_visit()
