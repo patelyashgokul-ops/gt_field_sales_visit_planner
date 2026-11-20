@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <record id="action_field_sales_dashboard" model="ir.actions.client">
+    <field name="name">Field Sales Dashboard</field>
+    <field name="tag">gt_field_sales_visit_planner.dashboard</field>
+  </record>
+  <menuitem id="menu_field_sales_dashboard" name="Dashboard" parent="gt_field_sales_visit_planner.menu_field_sales"
+            action="action_field_sales_dashboard" sequence="1"
+            groups="gt_field_sales_visit_planner.group_field_salesperson,gt_field_sales_visit_planner.group_sales_manager,gt_field_sales_visit_planner.group_field_sales_admin"/>
+</odoo>

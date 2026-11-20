@@ -362,7 +362,8 @@ class SalesReporting(models.AbstractModel):
         counts = self._status_counts(f)
         followups = self._followup_counts(f)
         exceptions = self._exception_counts(f)
-        coverage = self._coverage_rows(f, limit=20)
+        coverage_all = self._coverage_rows(f, limit=10000)
+        coverage = coverage_all[:20]
         outcomes = self._outcome_rows(f, limit=10)
         salespeople = self._salesperson_rows(f, limit=10)
         territories = self.env['gt.sales.territory'].search([('company_id', '=', f['company_id']), ('active', '=', True)])
@@ -383,11 +384,11 @@ class SalesReporting(models.AbstractModel):
             'territories': [{'id': t.id, 'name': t.display_name} for t in territories],
             'salespeople': salespeople_options,
             'kpis': {**counts, 'coverage_percent': round(
-                sum(row['customers_visited'] for row in coverage) * 100.0 /
-                sum(row['allocated_customers'] for row in coverage), 1)
-                if sum(row['allocated_customers'] for row in coverage) else None,
-                'territories_covered': sum(1 for row in coverage if row['customers_visited']),
-                'territory_count': len(coverage), 'overdue_followups': followups['overdue'],
+                sum(row['customers_visited'] for row in coverage_all) * 100.0 /
+                sum(row['allocated_customers'] for row in coverage_all), 1)
+                if sum(row['allocated_customers'] for row in coverage_all) else None,
+                'territories_covered': sum(1 for row in coverage_all if row['customers_visited']),
+                'territory_count': len(coverage_all), 'overdue_followups': followups['overdue'],
                 'pending_gps_exceptions': exceptions['pending']},
             'states': counts['states'], 'followups': followups, 'exceptions': exceptions,
             'coverage': coverage, 'outcomes': outcomes, 'salespeople_rows': salespeople,
