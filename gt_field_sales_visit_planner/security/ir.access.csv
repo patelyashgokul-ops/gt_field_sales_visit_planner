@@ -1,4 +1,4 @@
-id,name,model_id,group_id/id,operation,domain
+﻿id,name,model_id,group_id/id,operation,domain
 restrict_territory_company,territory company boundary,gt.sales.territory,,crud,"[('company_id', 'in', company_ids)]"
 restrict_assignment_company,assignment company boundary,gt.sales.territory.assignment,,crud,"[('company_id', 'in', company_ids)]"
 restrict_allocation_company,allocation company boundary,gt.sales.territory.customer,,crud,"[('company_id', 'in', company_ids)]"
@@ -31,6 +31,15 @@ access_visit_event_salesperson,own visit execution evidence,gt.sales.visit.event
 access_visit_event_manager,company visit execution evidence,gt.sales.visit.event,gt_field_sales_visit_planner.group_sales_manager,r,
 access_visit_event_admin,company visit execution evidence administrator,gt.sales.visit.event,gt_field_sales_visit_planner.group_field_sales_admin,r,
 access_location_exception_salesperson,own location exceptions,gt.sales.visit.location.exception,gt_field_sales_visit_planner.group_field_salesperson,r,
-access_location_exception_manager,review location exceptions,gt.sales.visit.location.exception,gt_field_sales_visit_planner.group_sales_manager,rw,
-access_location_exception_admin,review location exceptions administrator,gt.sales.visit.location.exception,gt_field_sales_visit_planner.group_field_sales_admin,rw,
+access_location_exception_manager,review location exceptions,gt.sales.visit.location.exception,gt_field_sales_visit_planner.group_sales_manager,ru,
+access_location_exception_admin,review location exceptions administrator,gt.sales.visit.location.exception,gt_field_sales_visit_planner.group_field_sales_admin,ru,
 access_exception_review_wizard,location exception review wizard,gt.sales.visit.exception.review.wizard,gt_field_sales_visit_planner.group_sales_manager,crud,
+restrict_execution_policy_company,GPS policy company boundary,gt.sales.execution.policy,,crud,"[('company_id', 'in', company_ids)]"
+restrict_customer_location_company,customer location company boundary,gt.sales.customer.location,,crud,"[('company_id', 'in', company_ids)]"
+restrict_visit_event_company,visit event company boundary,gt.sales.visit.event,,crud,"[('company_id', 'in', company_ids)]"
+access_visit_event_salesperson_own,own visit execution evidence,gt.sales.visit.event,gt_field_sales_visit_planner.group_field_salesperson,r,"[('visit_id.user_id', '=', user.id)]"
+access_visit_event_manager_company,company visit execution evidence,gt.sales.visit.event,gt_field_sales_visit_planner.group_sales_manager,r,"[('company_id', 'in', company_ids)]"
+restrict_visit_exception_company,location exception company boundary,gt.sales.visit.location.exception,,crud,"[('company_id', 'in', company_ids)]"
+access_visit_exception_salesperson_own,own location exceptions,gt.sales.visit.location.exception,gt_field_sales_visit_planner.group_field_salesperson,r,"[('user_id', '=', user.id)]"
+access_visit_exception_manager_company,company location exception review,gt.sales.visit.location.exception,gt_field_sales_visit_planner.group_sales_manager,ru,"[('company_id', 'in', company_ids)]"
+
