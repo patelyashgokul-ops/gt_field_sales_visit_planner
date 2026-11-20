@@ -89,10 +89,13 @@ class TestVisitBusiness(FieldSalesCase):
         checked_out = self.make_visit()
         with self.assertRaises(ValidationError):
             checked_out.with_user(self.salesperson_a).action_complete_visit()
-        checked_out.with_user(self.salesperson_a).write({'outcome_id': self.outcome.id})
         with self.assertRaises(ValidationError):
-            checked_out.with_user(self.salesperson_a).action_complete_visit()
-        checked_out.with_user(self.salesperson_a).write({'meeting_summary': 'Discussed next steps.'})
+            checked_out.with_user(self.salesperson_a).write({'outcome_id': self.outcome.id})
+        with self.assertRaises(ValidationError):
+            checked_out.with_user(self.salesperson_a).write({
+                'outcome_id': self.outcome.id, 'meeting_summary': 'Discussed next steps.',
+                'followup_required': True,
+            })
         with self.assertRaises(ValidationError):
             checked_out.with_user(self.salesperson_a).action_complete_visit()
         self.assertEqual(checked_out.state, 'checked_out_pending_outcome')
@@ -132,8 +135,10 @@ class TestVisitBusiness(FieldSalesCase):
 
     def test_cross_company_crm_product_interest_and_completed_write_denied(self):
         visit = self.make_visit()
+        self.salesperson_a.write({'group_ids': [(4, self.env.ref('sales_team.group_sale_salesman').id)]})
         lead = self.env['crm.lead'].with_company(self.company_a).create({
             'name': 'Eligible opportunity', 'partner_id': self.customer_a.id, 'company_id': self.company_a.id,
+            'user_id': self.salesperson_a.id,
         })
         foreign = self.env['crm.lead'].with_company(self.company_b).create({
             'name': 'Foreign opportunity', 'partner_id': self.customer_b.id, 'company_id': self.company_b.id,

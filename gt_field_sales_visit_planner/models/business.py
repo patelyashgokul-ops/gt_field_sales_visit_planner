@@ -268,6 +268,10 @@ class SalesVisitBusiness(models.Model):
         self.ensure_one()
         self.check_access('write')
         self._check_business_actor()
+        self._lock_for_planning_transition()
+        self.invalidate_recordset(['outcome_id', 'meeting_summary', 'customer_feedback', 'customer_objection',
+                                   'followup_required', 'next_followup_date', 'next_followup_user_id',
+                                   'next_followup_summary', 'followup_activity_id'])
         if not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
             raise AccessError('Only a Sales Manager can correct completed business results.')
         if self.state != 'completed' or not isinstance(values, dict) or not reason or not reason.strip():
@@ -394,6 +398,10 @@ class MailActivityVisitFollowup(models.Model):
             if not (self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager') or
                     all(act.gt_source_visit_id.user_id == self.env.user or act.user_id == self.env.user for act in sourced)):
                 raise AccessError('Only the assigned salesperson or an authorized manager can change this follow-up.')
+            visits = sourced.mapped('gt_source_visit_id').sorted('id')
+            for visit in visits:
+                visit._check_business_actor()
+                visit._lock_for_planning_transition()
             for activity in sourced:
                 check_allowed_company(activity.gt_source_visit_id.plan_id)
                 if vals.get('user_id'):
@@ -434,9 +442,11 @@ class MailActivityVisitFollowup(models.Model):
     def action_feedback(self, feedback=False, attachment_ids=None):
         for activity in self.filtered('gt_source_visit_id'):
             visit = activity.gt_source_visit_id
+            visit._check_business_actor()
+            visit._lock_for_planning_transition()
+            visit.invalidate_recordset(['followup_completed_at'])
             if visit.followup_completed_at:
                 continue
-            visit._check_business_actor()
             completed_at = fields.Datetime.now()
             self.env['gt.sales.visit.event'].sudo().create({
                 'visit_id': visit.id, 'company_id': visit.company_id.id,
