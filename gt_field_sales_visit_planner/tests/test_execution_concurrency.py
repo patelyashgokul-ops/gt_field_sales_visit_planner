@@ -75,6 +75,8 @@ class TestExecutionConcurrency(TransactionCase):
         super().setUp()
         # The race fixtures are deliberately committed so worker cursors can see them.
         with self.registry.cursor() as cr:
+            cr.execute("UPDATE gt_sales_visit_plan SET state='confirmed', cancellation_reason=NULL, "
+                       "cancelled_at=NULL, cancelled_by=NULL WHERE id=%s", [self.plan_id])
             cr.execute('UPDATE gt_sales_visit SET checkin_event_id=NULL, checkout_event_id=NULL, '
                        'checkin_exception_id=NULL, checkout_exception_id=NULL, checkin_at=NULL, checkout_at=NULL, '
                        'actual_duration_minutes=NULL, state=\'planned\' WHERE id = ANY(%s)',
@@ -150,6 +152,36 @@ class TestExecutionConcurrency(TransactionCase):
             futures = [pool.submit(invoke, call) for call in calls]
             return [future.result(timeout=20) for future in futures]
 
+    def _orm_call(self, uid, visit_id, method, payload=None):
+        with self.registry.cursor() as cr:
+            cr.execute("SET LOCAL statement_timeout = '15s'")
+            env = api.Environment(cr, uid, {'allowed_company_ids': [self.company_id]})
+            try:
+                visit = env['gt.sales.visit'].browse(visit_id)
+                if method == 'action_cancel':
+                    result = env['gt.sales.visit.plan'].browse(self.plan_id).with_user(uid).action_cancel(
+                        'P07 concurrent plan cancellation')
+                elif method == 'action_reschedule':
+                    target = fields.Date.add(fields.Date.today(), days=1)
+                    result = visit.with_user(uid).action_reschedule(target, 'P07 concurrent reschedule')
+                else:
+                    result = getattr(visit.with_user(uid), method)(payload)
+                cr.commit()
+                return ('ok', result)
+            except Exception as error:
+                cr.rollback()
+                return ('rejected', type(error).__name__)
+
+    def _barrier_orm_calls(self, calls):
+        ready = threading.Barrier(len(calls))
+
+        def invoke(call):
+            ready.wait(timeout=10)
+            return self._orm_call(*call)
+
+        with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+            return [future.result(timeout=25) for future in [pool.submit(invoke, call) for call in calls]]
+
     @staticmethod
     def _payload(token=None):
         return {'latitude': 12.0, 'longitude': 77.0, 'accuracy_m': 5,
@@ -208,3 +240,51 @@ class TestExecutionConcurrency(TransactionCase):
             (self.sales_id, visit_id, 'action_reschedule', None),
         ])
         self.assertEqual(sorted(status for status, _ in outcomes), ['ok', 'rejected'])
+
+    def test_real_orm_concurrent_checkin_replay_is_idempotent(self):
+        token = str(uuid4())
+        payload = self._payload(token)
+        outcomes = self._barrier_orm_calls([
+            (self.sales_id, self.visit_ids[0], 'action_check_in', payload),
+            (self.sales_id, self.visit_ids[0], 'action_check_in', payload),
+        ])
+        self.assertEqual([status for status, _ in outcomes], ['ok', 'ok'])
+        with self.registry.cursor() as cr:
+            cr.execute('SELECT state FROM gt_sales_visit WHERE id=%s', [self.visit_ids[0]])
+            self.assertEqual(cr.fetchone()[0], 'checked_in')
+            cr.execute('SELECT count(*) FROM gt_sales_visit_event WHERE visit_id=%s AND event_type=%s',
+                       [self.visit_ids[0], 'check_in'])
+            self.assertEqual(cr.fetchone()[0], 1)
+            cr.execute('SELECT count(*) FROM gt_sales_visit_execution_request WHERE visit_id=%s', [self.visit_ids[0]])
+            self.assertEqual(cr.fetchone()[0], 1)
+
+    def test_real_orm_concurrent_active_visit_conflict(self):
+        outcomes = self._barrier_orm_calls([
+            (self.sales_id, self.visit_ids[0], 'action_check_in', self._payload()),
+            (self.sales_id, self.visit_ids[1], 'action_check_in', self._payload()),
+        ])
+        self.assertEqual(sorted(status for status, _ in outcomes), ['ok', 'rejected'])
+        with self.registry.cursor() as cr:
+            cr.execute("SELECT count(*) FROM gt_sales_visit WHERE user_id=%s AND state='checked_in'", [self.sales_id])
+            self.assertEqual(cr.fetchone()[0], 1)
+
+    def test_real_orm_concurrent_plan_cancel_and_checkin(self):
+        outcomes = self._barrier_orm_calls([
+            (self.sales_id, self.visit_ids[0], 'action_check_in', self._payload()),
+            (self.manager_id, self.visit_ids[0], 'action_cancel', None),
+        ])
+        self.assertEqual(sorted(status for status, _ in outcomes), ['ok', 'rejected'])
+        with self.registry.cursor() as cr:
+            cr.execute('SELECT p.state, v.state FROM gt_sales_visit_plan p '
+                       'JOIN gt_sales_visit v ON v.plan_id=p.id WHERE v.id=%s', [self.visit_ids[0]])
+            plan_state, visit_state = cr.fetchone()
+            if plan_state == 'cancelled':
+                self.assertEqual(visit_state, 'cancelled')
+                cr.execute('SELECT count(*) FROM gt_sales_visit_event WHERE visit_id=%s AND event_type=%s',
+                           [self.visit_ids[0], 'check_in'])
+                self.assertEqual(cr.fetchone()[0], 0)
+            else:
+                self.assertEqual((plan_state, visit_state), ('confirmed', 'checked_in'))
+                cr.execute('SELECT count(*) FROM gt_sales_visit_event WHERE visit_id=%s AND event_type=%s',
+                           [self.visit_ids[0], 'check_in'])
+                self.assertEqual(cr.fetchone()[0], 1)

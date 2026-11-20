@@ -178,8 +178,9 @@ class SalesVisitPlan(models.Model):
             check_allowed_company(plan)
             if plan.state == 'cancelled':
                 raise UserError('This plan is already cancelled.')
-            if plan.visit_ids.filtered(lambda visit: visit.state == 'checked_in'):
-                raise UserError('A plan with an active checked-in visit cannot be cancelled.')
+            if plan.visit_ids.filtered(lambda visit: visit.state in (
+                    'checked_in', 'checked_out_pending_outcome', 'completed', 'missed')):
+                raise UserError('A plan with executed visits cannot be cancelled; preserve its execution history.')
             if plan.user_id != self.env.user and not self.env.user.has_group('gt_field_sales_visit_planner.group_sales_manager'):
                 raise AccessError('You can only cancel your own plan.')
             plan.visit_ids.filtered(lambda v: v.state in ('draft', 'planned', 'rescheduled'))._apply_transition({
